@@ -1,5 +1,12 @@
 import * as Schema from "effect/Schema";
-import { NonNegativeInt, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  NonNegativeInt,
+  PositiveInt,
+  ProjectId,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
+import { ProviderInstanceId } from "./providerInstance.ts";
 
 const PROJECT_SEARCH_ENTRIES_MAX_LIMIT = 200;
 const PROJECT_WRITE_FILE_PATH_MAX_LENGTH = 512;
@@ -220,6 +227,56 @@ export class ProjectWriteFileError extends Schema.TaggedErrorClass<ProjectWriteF
       message:
         decodedProjectErrorMessage(props) ??
         `Failed to write workspace file '${props.relativePath}' in '${props.cwd}'.`,
+    } as any);
+  }
+}
+
+export const ProjectImportPiSessionsInput = Schema.Struct({
+  projectId: ProjectId,
+  providerInstanceId: Schema.optional(ProviderInstanceId),
+});
+export type ProjectImportPiSessionsInput = typeof ProjectImportPiSessionsInput.Type;
+
+export const ProjectImportPiSessionsResult = Schema.Struct({
+  scanned: NonNegativeInt,
+  imported: NonNegativeInt,
+  skipped: NonNegativeInt,
+  threadIds: Schema.Array(ThreadId),
+});
+export type ProjectImportPiSessionsResult = typeof ProjectImportPiSessionsResult.Type;
+
+export const ProjectImportPiSessionsFailure = Schema.Literals([
+  "project_not_found",
+  "workspace_root_missing",
+  "pi_disabled",
+  "import_failed",
+]);
+export type ProjectImportPiSessionsFailure = typeof ProjectImportPiSessionsFailure.Type;
+
+export class ProjectImportPiSessionsError extends Schema.TaggedErrorClass<ProjectImportPiSessionsError>()(
+  "ProjectImportPiSessionsError",
+  {
+    projectId: Schema.optional(ProjectId),
+    failure: ProjectImportPiSessionsFailure,
+    detail: Schema.optional(TrimmedNonEmptyString),
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  // @effect-diagnostics-next-line overriddenSchemaConstructor:off
+  constructor(props: {
+    readonly projectId?: typeof ProjectId.Type;
+    readonly failure: ProjectImportPiSessionsFailure;
+    readonly detail?: string;
+    readonly message?: string;
+    readonly cause?: unknown;
+  }) {
+    super({
+      ...props,
+      message:
+        props.message ??
+        props.detail ??
+        `Failed to import Pi sessions for project '${props.projectId ?? "unknown"}'.`,
     } as any);
   }
 }
