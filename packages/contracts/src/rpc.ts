@@ -71,6 +71,9 @@ import {
   ProjectReadFileError,
   ProjectReadFileInput,
   ProjectReadFileResult,
+  ProjectImportPiSessionsError,
+  ProjectImportPiSessionsInput,
+  ProjectImportPiSessionsResult,
   ProjectSearchEntriesError,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
@@ -153,6 +156,7 @@ export const WS_METHODS = {
   projectsReadFile: "projects.readFile",
   projectsSearchEntries: "projects.searchEntries",
   projectsWriteFile: "projects.writeFile",
+  projectsImportPiSessions: "projects.importPiSessions",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -376,6 +380,12 @@ export const WsProjectsWriteFileRpc = Rpc.make(WS_METHODS.projectsWriteFile, {
   payload: ProjectWriteFileInput,
   success: ProjectWriteFileResult,
   error: Schema.Union([ProjectWriteFileError, EnvironmentAuthorizationError]),
+});
+
+export const WsProjectsImportPiSessionsRpc = Rpc.make(WS_METHODS.projectsImportPiSessions, {
+  payload: ProjectImportPiSessionsInput,
+  success: ProjectImportPiSessionsResult,
+  error: Schema.Union([ProjectImportPiSessionsError, EnvironmentAuthorizationError]),
 });
 
 export const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
@@ -703,6 +713,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsReadFileRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsWriteFileRpc,
+  WsProjectsImportPiSessionsRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
   WsAssetsCreateUrlRpc,
