@@ -44,11 +44,57 @@ export const EDITORS = [
 export const EditorId = Schema.Literals(EDITORS.map((e) => e.id));
 export type EditorId = typeof EditorId.Type;
 
+export const MacOsApplicationPath = TrimmedNonEmptyString.check(Schema.isEndsWith(".app"));
+export type MacOsApplicationPath = typeof MacOsApplicationPath.Type;
+
+/** Stable shape suitable for client persistence. Path doubles as id across selections. */
+export const CustomApplication = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  path: MacOsApplicationPath,
+  name: TrimmedNonEmptyString,
+});
+export type CustomApplication = typeof CustomApplication.Type;
+
+export const SelectCustomApplicationResult = Schema.Struct({
+  application: Schema.NullOr(CustomApplication),
+});
+export type SelectCustomApplicationResult = typeof SelectCustomApplicationResult.Type;
+
 export const LaunchEditorInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
-  editor: EditorId,
+  editor: Schema.Union([EditorId, CustomApplication]),
 });
 export type LaunchEditorInput = typeof LaunchEditorInput.Type;
+
+export class ExternalLauncherUnsupportedPlatformError extends Schema.TaggedErrorClass<ExternalLauncherUnsupportedPlatformError>()(
+  "ExternalLauncherUnsupportedPlatformError",
+  {
+    operation: Schema.Literals(["select-custom-application", "launch-custom-application"]),
+    platform: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `Unsupported platform for ${this.operation}: ${this.platform}`;
+  }
+}
+
+export class ExternalLauncherInvalidApplicationPathError extends Schema.TaggedErrorClass<ExternalLauncherInvalidApplicationPathError>()(
+  "ExternalLauncherInvalidApplicationPathError",
+  { path: Schema.String },
+) {
+  override get message(): string {
+    return `Custom application path must end in .app: ${this.path}`;
+  }
+}
+
+export class ExternalLauncherApplicationSelectionError extends Schema.TaggedErrorClass<ExternalLauncherApplicationSelectionError>()(
+  "ExternalLauncherApplicationSelectionError",
+  { cause: Schema.Defect() },
+) {
+  override get message(): string {
+    return "Failed to select macOS application";
+  }
+}
 
 export class ExternalLauncherUnknownEditorError extends Schema.TaggedErrorClass<ExternalLauncherUnknownEditorError>()(
   "ExternalLauncherUnknownEditorError",
@@ -75,7 +121,7 @@ export class ExternalLauncherUnsupportedEditorError extends Schema.TaggedErrorCl
 export class ExternalLauncherCommandNotFoundError extends Schema.TaggedErrorClass<ExternalLauncherCommandNotFoundError>()(
   "ExternalLauncherCommandNotFoundError",
   {
-    editor: EditorId,
+    editor: Schema.String,
     command: Schema.String,
   },
 ) {
@@ -106,7 +152,7 @@ export class ExternalLauncherEditorSpawnError extends Schema.TaggedErrorClass<Ex
   "ExternalLauncherEditorSpawnError",
   {
     ...ExternalLauncherSpawnFields,
-    editor: EditorId,
+    editor: Schema.String,
     target: Schema.String,
   },
 ) {
@@ -116,6 +162,9 @@ export class ExternalLauncherEditorSpawnError extends Schema.TaggedErrorClass<Ex
 }
 
 export const ExternalLauncherError = Schema.Union([
+  ExternalLauncherUnsupportedPlatformError,
+  ExternalLauncherInvalidApplicationPathError,
+  ExternalLauncherApplicationSelectionError,
   ExternalLauncherUnknownEditorError,
   ExternalLauncherUnsupportedEditorError,
   ExternalLauncherCommandNotFoundError,

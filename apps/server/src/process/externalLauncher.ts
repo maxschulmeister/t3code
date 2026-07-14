@@ -12,10 +12,15 @@ import {
   ExternalLauncherBrowserSpawnError,
   ExternalLauncherCommandNotFoundError,
   ExternalLauncherEditorSpawnError,
+  ExternalLauncherInvalidApplicationPathError,
+  ExternalLauncherApplicationSelectionError,
   ExternalLauncherUnknownEditorError,
   ExternalLauncherUnsupportedEditorError,
+  ExternalLauncherUnsupportedPlatformError,
+  type CustomApplication,
   type EditorId,
   type LaunchEditorInput,
+  type SelectCustomApplicationResult,
 } from "@t3tools/contracts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { isCommandAvailable, resolveSpawnCommand } from "@t3tools/shared/shell";
@@ -39,13 +44,16 @@ export {
   ExternalLauncherBrowserSpawnError,
   ExternalLauncherCommandNotFoundError,
   ExternalLauncherEditorSpawnError,
+  ExternalLauncherInvalidApplicationPathError,
+  ExternalLauncherApplicationSelectionError,
   ExternalLauncherUnknownEditorError,
   ExternalLauncherUnsupportedEditorError,
+  ExternalLauncherUnsupportedPlatformError,
   isExternalLauncherError,
 } from "@t3tools/contracts";
 export type { LaunchEditorInput };
 interface EditorLaunch {
-  readonly editor: EditorId;
+  readonly editor: string;
   readonly target: string;
   readonly command: string;
   readonly args: ReadonlyArray<string>;
@@ -71,6 +79,13 @@ const POWERSHELL_ARGUMENTS_PREFIX = [
   "Bypass",
   "-EncodedCommand",
 ] as const;
+
+const MACOS_APPLICATION_SELECTION_SCRIPT = `try
+  set selectedApplication to choose file with prompt "Choose an application" default location (path to applications folder) of type {"com.apple.application-bundle"}
+  return POSIX path of selectedApplication
+on error number -128
+  return ""
+end try`;
 
 const DETACHED_IGNORE_STDIO_OPTIONS = {
   detached: true,
@@ -305,6 +320,11 @@ export class ExternalLauncher extends Context.Service<
   ExternalLauncher,
   {
     readonly resolveAvailableEditors: () => Effect.Effect<ReadonlyArray<EditorId>>;
+    /** Select a macOS application bundle. A cancelled dialog returns null. */
+    readonly selectCustomApplication: () => Effect.Effect<
+      SelectCustomApplicationResult,
+      ExternalLauncherError
+    >;
     /** Launch a URL target in the default browser. */
     readonly launchBrowser: (target: string) => Effect.Effect<void, ExternalLauncherError>;
     /**
@@ -325,11 +345,31 @@ const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
 ): Effect.fn.Return<EditorLaunch, ExternalLauncherError, FileSystem.FileSystem | Path.Path> {
   const platform = yield* HostProcessPlatform;
   const env = yield* readCommandLookupEnv;
+  const editorId = typeof input.editor === "string" ? input.editor : input.editor.id;
   yield* Effect.annotateCurrentSpan({
-    "externalLauncher.editor": input.editor,
+    "externalLauncher.editor": editorId,
     "externalLauncher.cwd": input.cwd,
     "externalLauncher.platform": platform,
   });
+
+  if (typeof input.editor !== "string") {
+    if (platform !== "darwin") {
+      return yield* new ExternalLauncherUnsupportedPlatformError({
+        operation: "launch-custom-application",
+        platform,
+      });
+    }
+    if (!input.editor.path.endsWith(".app")) {
+      return yield* new ExternalLauncherInvalidApplicationPathError({ path: input.editor.path });
+    }
+    return {
+      editor: input.editor.id,
+      target: input.cwd,
+      command: "open",
+      args: ["-a", input.editor.path, input.cwd],
+    };
+  }
+
   const editorDef = EDITORS.find((editor) => editor.id === input.editor);
   if (!editorDef) {
     return yield* new ExternalLauncherUnknownEditorError({ editor: input.editor });
@@ -359,6 +399,45 @@ const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
     args: [input.cwd],
   };
 });
+
+const selectCustomApplication = Effect.fn("externalLauncher.selectCustomApplication")(
+  function* (): Effect.fn.Return<
+    SelectCustomApplicationResult,
+    ExternalLauncherError,
+    ChildProcessSpawner.ChildProcessSpawner
+  > {
+    const platform = yield* HostProcessPlatform;
+    if (platform !== "darwin") {
+      return yield* new ExternalLauncherUnsupportedPlatformError({
+        operation: "select-custom-application",
+        platform,
+      });
+    }
+
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const command = ChildProcess.make("osascript", ["-e", MACOS_APPLICATION_SELECTION_SCRIPT], {
+      shell: false,
+    });
+    const output = yield* spawner
+      .string(command)
+      .pipe(Effect.mapError((cause) => new ExternalLauncherApplicationSelectionError({ cause })));
+    const applicationPath = output.trim().replace(/\/$/, "");
+    if (applicationPath === "") {
+      return { application: null };
+    }
+    if (!applicationPath.endsWith(".app")) {
+      return yield* new ExternalLauncherInvalidApplicationPathError({ path: applicationPath });
+    }
+
+    const fileName = applicationPath.slice(applicationPath.lastIndexOf("/") + 1);
+    const application: CustomApplication = {
+      id: applicationPath,
+      path: applicationPath,
+      name: fileName.slice(0, -".app".length),
+    };
+    return { application };
+  },
+);
 
 const launchAndUnref = Effect.fn("externalLauncher.launchAndUnref")(function* (
   launch: ProcessLaunch,
@@ -445,6 +524,10 @@ export const make = Effect.gen(function* () {
 
   return ExternalLauncher.of({
     resolveAvailableEditors: () => provideCommandResolutionServices(resolveAvailableEditors()),
+    selectCustomApplication: () =>
+      selectCustomApplication().pipe(
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      ),
     launchBrowser: (target) =>
       launchBrowser(target).pipe(
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
