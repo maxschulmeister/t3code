@@ -28,6 +28,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "../ui/empty";
+import { DraftInput } from "../ui/draft-input";
 import { Skeleton } from "../ui/skeleton";
 import {
   NumberField,
@@ -48,7 +49,12 @@ import {
   type Icon,
 } from "../Icons";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
-import { SettingResetButton, SettingsPageContainer, SettingsSection } from "./settingsLayout";
+import {
+  SettingResetButton,
+  SettingsPageContainer,
+  SettingsRow,
+  SettingsSection,
+} from "./settingsLayout";
 
 const EMPTY_DISCOVERY_RESULT: SourceControlDiscoveryResult = {
   versionControlSystems: [],
@@ -440,6 +446,8 @@ function EmptySourceControlDiscovery({
 }
 
 export function SourceControlSettingsPanel() {
+  const settings = usePrimarySettings();
+  const updateSettings = useUpdatePrimarySettings();
   const environmentId = usePrimaryEnvironment()?.environmentId ?? null;
   const discovery = useEnvironmentQuery(
     environmentId === null
@@ -478,6 +486,53 @@ export function SourceControlSettingsPanel() {
 
   return (
     <SettingsPageContainer>
+      <SettingsSection title="Branch Naming">
+        <SettingsRow
+          title="Use branch prefix"
+          description="Groups generated worktree branches and makes T3 Code-created work easier to identify."
+          resetAction={
+            settings.useWorktreeBranchPrefix !== DEFAULT_UNIFIED_SETTINGS.useWorktreeBranchPrefix ||
+            settings.worktreeBranchPrefix !== DEFAULT_UNIFIED_SETTINGS.worktreeBranchPrefix ? (
+              <SettingResetButton
+                label="worktree branch prefix"
+                onClick={() =>
+                  updateSettings({
+                    useWorktreeBranchPrefix: DEFAULT_UNIFIED_SETTINGS.useWorktreeBranchPrefix,
+                    worktreeBranchPrefix: DEFAULT_UNIFIED_SETTINGS.worktreeBranchPrefix,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.useWorktreeBranchPrefix}
+              onCheckedChange={(checked) =>
+                updateSettings({ useWorktreeBranchPrefix: Boolean(checked) })
+              }
+              aria-label="Prefix generated worktree branch names"
+            />
+          }
+        />
+
+        {settings.useWorktreeBranchPrefix ? (
+          <SettingsRow
+            title="Branch prefix"
+            description="Added before generated branch names, for example t3code/fix-login."
+            control={
+              <DraftInput
+                className="w-full sm:w-56"
+                value={settings.worktreeBranchPrefix}
+                onCommit={(next) => updateSettings({ worktreeBranchPrefix: next })}
+                placeholder="t3code"
+                spellCheck={false}
+                aria-label="Worktree branch prefix"
+              />
+            }
+          />
+        ) : null}
+      </SettingsSection>
+
       {isInitialScanPending ? (
         <>
           <SourceControlSectionSkeleton title="Version Control" headerAction={scanButton} />

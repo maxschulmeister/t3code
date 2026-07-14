@@ -806,52 +806,6 @@ export function GeneralSettingsPanel() {
         ) : null}
 
         <SettingsRow
-          title="Use branch prefix"
-          description="Groups generated worktree branches and makes T3 Code-created work easier to identify."
-          resetAction={
-            settings.useWorktreeBranchPrefix !== DEFAULT_UNIFIED_SETTINGS.useWorktreeBranchPrefix ||
-            settings.worktreeBranchPrefix !== DEFAULT_UNIFIED_SETTINGS.worktreeBranchPrefix ? (
-              <SettingResetButton
-                label="worktree branch prefix"
-                onClick={() =>
-                  updateSettings({
-                    useWorktreeBranchPrefix: DEFAULT_UNIFIED_SETTINGS.useWorktreeBranchPrefix,
-                    worktreeBranchPrefix: DEFAULT_UNIFIED_SETTINGS.worktreeBranchPrefix,
-                  })
-                }
-              />
-            ) : null
-          }
-          control={
-            <Switch
-              checked={settings.useWorktreeBranchPrefix}
-              onCheckedChange={(checked) =>
-                updateSettings({ useWorktreeBranchPrefix: Boolean(checked) })
-              }
-              aria-label="Prefix generated worktree branch names"
-            />
-          }
-        />
-
-        {settings.useWorktreeBranchPrefix ? (
-          <SettingsRow
-            className="bg-muted/20 sm:pl-9"
-            title="Branch prefix"
-            description="Added before generated branch names, for example t3code/fix-login."
-            control={
-              <DraftInput
-                className="w-full sm:w-56"
-                value={settings.worktreeBranchPrefix}
-                onCommit={(next) => updateSettings({ worktreeBranchPrefix: next })}
-                placeholder="t3code"
-                spellCheck={false}
-                aria-label="Worktree branch prefix"
-              />
-            }
-          />
-        ) : null}
-
-        <SettingsRow
           title="Add project starts in"
           description='Leave empty to use "~/" when the Add Project browser opens.'
           resetAction={
