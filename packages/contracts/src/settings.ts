@@ -3,6 +3,13 @@ import * as Duration from "effect/Duration";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
+import {
+  BUILTIN_DEFAULT_THEME_ID,
+  ColorThemeId,
+  DEFAULT_UI_FONT_SIZE_PX,
+  StoredColorTheme,
+  UiFontSizePx,
+} from "./colorTheme.ts";
 import { DEFAULT_GIT_TEXT_GENERATION_MODEL, ProviderOptionSelections } from "./model.ts";
 import { ModelSelection } from "./orchestration.ts";
 import { ProviderInstanceConfig, ProviderInstanceId } from "./providerInstance.ts";
@@ -92,6 +99,21 @@ export const ClientSettingsSchema = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_TIMESTAMP_FORMAT)),
   ),
   wordWrap: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  // Appearance: per-mode color theme slots + custom themes generated from prompts.
+  // `builtin:t3-default` keeps the stylesheet defaults in index.css.
+  appearanceLightThemeId: ColorThemeId.pipe(
+    Schema.withDecodingDefault(Effect.succeed(BUILTIN_DEFAULT_THEME_ID)),
+  ),
+  appearanceDarkThemeId: ColorThemeId.pipe(
+    Schema.withDecodingDefault(Effect.succeed(BUILTIN_DEFAULT_THEME_ID)),
+  ),
+  customColorThemes: Schema.Array(StoredColorTheme).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  uiFontFamily: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  uiFontSizePx: UiFontSizePx.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_UI_FONT_SIZE_PX)),
+  ),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;
 
@@ -600,5 +622,10 @@ export const ClientSettingsPatch = Schema.Struct({
   sidebarThreadPreviewCount: Schema.optionalKey(SidebarThreadPreviewCount),
   timestampFormat: Schema.optionalKey(TimestampFormat),
   wordWrap: Schema.optionalKey(Schema.Boolean),
+  appearanceLightThemeId: Schema.optionalKey(ColorThemeId),
+  appearanceDarkThemeId: Schema.optionalKey(ColorThemeId),
+  customColorThemes: Schema.optionalKey(Schema.Array(StoredColorTheme)),
+  uiFontFamily: Schema.optionalKey(TrimmedString),
+  uiFontSizePx: Schema.optionalKey(UiFontSizePx),
 });
 export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;
