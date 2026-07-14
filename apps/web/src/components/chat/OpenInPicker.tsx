@@ -1,11 +1,16 @@
-import { EditorId, type EnvironmentId, type ResolvedKeybindingsConfig } from "@t3tools/contracts";
+import {
+  EditorId,
+  type CustomApplication,
+  type EnvironmentId,
+  type ResolvedKeybindingsConfig,
+} from "@t3tools/contracts";
 import { memo, useCallback, useEffect, useMemo } from "react";
 import { isOpenFavoriteEditorShortcut, shortcutLabelForCommand } from "../../keybindings";
 import { usePreferredEditor } from "../../editorPreferences";
-import { ChevronDownIcon, FolderClosedIcon } from "lucide-react";
+import { AppWindowIcon, ChevronDownIcon, FolderClosedIcon, PlusIcon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Group, GroupSeparator } from "../ui/group";
-import { Menu, MenuItem, MenuPopup, MenuShortcut, MenuTrigger } from "../ui/menu";
+import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "../ui/menu";
 import {
   AntigravityIcon,
   CursorIcon,
@@ -31,6 +36,7 @@ import {
   RustRoverIcon,
   WebStormIcon,
 } from "../JetBrainsIcons";
+import { useCustomApplications } from "~/customApplications";
 import { isMacPlatform, isWindowsPlatform } from "~/lib/utils";
 import { shellEnvironment } from "~/state/shell";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -167,7 +173,17 @@ export const OpenInPicker = memo(function OpenInPicker({
   enableShortcut?: boolean;
 }) {
   const openInEditorMutation = useAtomCommand(shellEnvironment.openInEditor, "open in editor");
+  const selectCustomApplication = useAtomCommand(
+    shellEnvironment.selectCustomApplication,
+    "add application",
+  );
   const [preferredEditor, setPreferredEditor] = usePreferredEditor(availableEditors);
+  const {
+    applications,
+    addApplication: persistApplication,
+    removeApplication,
+  } = useCustomApplications(environmentId);
+  const canAddApplication = isMacPlatform(navigator.platform);
   const options = useMemo(
     () => resolveOptions(navigator.platform, availableEditors),
     [availableEditors],
@@ -175,22 +191,31 @@ export const OpenInPicker = memo(function OpenInPicker({
   const primaryOption = options.find(({ value }) => value === preferredEditor) ?? null;
 
   const openInEditor = useCallback(
-    (editorId: EditorId | null) => {
+    (editor: EditorId | CustomApplication | null) => {
       if (!openInCwd) return;
-      const editor = editorId ?? preferredEditor;
-      if (!editor) return;
+      const resolvedEditor = editor ?? preferredEditor;
+      if (!resolvedEditor) return;
       const result = openInEditorMutation({
         environmentId,
         input: {
           cwd: openInCwd,
-          editor,
+          editor: resolvedEditor,
         },
       });
-      setPreferredEditor(editor);
+      if (typeof resolvedEditor === "string") {
+        setPreferredEditor(resolvedEditor);
+      }
       return result;
     },
     [environmentId, openInCwd, openInEditorMutation, preferredEditor, setPreferredEditor],
   );
+
+  const addApplication = useCallback(async () => {
+    const result = await selectCustomApplication({ environmentId, input: {} });
+    if (result._tag === "Success" && result.value.application) {
+      persistApplication(result.value.application);
+    }
+  }, [environmentId, persistApplication, selectCustomApplication]);
 
   const openFavoriteEditorShortcutLabel = useMemo(
     () => shortcutLabelForCommand(keybindings, "editor.openFavorite"),
@@ -258,7 +283,9 @@ export const OpenInPicker = memo(function OpenInPicker({
           <ChevronDownIcon aria-hidden="true" className="size-4" />
         </MenuTrigger>
         <MenuPopup align="end">
-          {options.length === 0 && <MenuItem disabled>No installed editors found</MenuItem>}
+          {options.length === 0 && applications.length === 0 && (
+            <MenuItem disabled>No installed editors found</MenuItem>
+          )}
           {options.map(({ label, Icon, value }) => (
             <MenuItem key={value} onClick={() => openInEditor(value)}>
               <Icon aria-hidden="true" className="text-muted-foreground" />
@@ -268,6 +295,50 @@ export const OpenInPicker = memo(function OpenInPicker({
               )}
             </MenuItem>
           ))}
+          {applications.length > 0 && <MenuSeparator />}
+          {applications.map((application) => (
+            <MenuItem
+              key={application.id}
+              className="group"
+              onClick={() => openInEditor(application)}
+              onKeyDown={(event) => {
+                if (event.key !== "Backspace" && event.key !== "Delete") return;
+                event.preventDefault();
+                event.stopPropagation();
+                removeApplication(application.id);
+              }}
+            >
+              <AppWindowIcon aria-hidden="true" className="text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate">{application.name}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                className="-my-1 -me-1 ms-auto size-6 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-visible:opacity-100 group-focus-visible:pointer-events-auto"
+                aria-label={`Remove ${application.name}`}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  removeApplication(application.id);
+                }}
+              >
+                <XIcon aria-hidden="true" className="size-3.5" />
+              </Button>
+            </MenuItem>
+          ))}
+          {canAddApplication && (
+            <>
+              {(options.length > 0 || applications.length > 0) && <MenuSeparator />}
+              <MenuItem onClick={() => void addApplication()}>
+                <PlusIcon aria-hidden="true" />
+                Add app
+              </MenuItem>
+            </>
+          )}
         </MenuPopup>
       </Menu>
     </Group>
