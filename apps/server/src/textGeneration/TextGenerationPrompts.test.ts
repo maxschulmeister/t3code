@@ -74,6 +74,17 @@ describe("buildPrContentPrompt", () => {
 });
 
 describe("buildBranchNamePrompt", () => {
+  it("provides existing branch names as naming-convention examples", () => {
+    const result = buildBranchNamePrompt({
+      message: "Fix reconnect handling",
+      existingBranchNames: ["main", "fix/socket-timeout", "feature/offline-mode"],
+    });
+
+    expect(result.prompt).toContain("Match existing branch naming conventions when evident.");
+    expect(result.prompt).toContain("- fix/socket-timeout");
+    expect(result.prompt).toContain("- feature/offline-mode");
+  });
+
   it("includes the user message in the prompt", () => {
     const result = buildBranchNamePrompt({
       message: "Fix the login timeout bug",

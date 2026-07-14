@@ -11,6 +11,7 @@ import { extractJsonObject } from "@t3tools/shared/schemaJson";
 import {
   extractLastAssistantText,
   makePiRpcTransport,
+  piResponseSucceeded,
   resolvePiThinkingLevel,
 } from "../provider/Layers/PiRpcClient.ts";
 import * as TextGeneration from "./TextGeneration.ts";
@@ -29,7 +30,7 @@ import {
 } from "./TextGenerationUtils.ts";
 
 const PI_TIMEOUT_MS = 180_000;
-const PI_LAST_TEXT_TIMEOUT_MS = 5_000;
+const RPC_REQUEST_TIMEOUT_MS = 30_000;
 
 type TextGenOperation =
   | "generateCommitMessage"
@@ -61,7 +62,6 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* 
           "rpc",
           "--no-session",
           "--no-tools",
-          "--no-extensions",
           ...(resolvePiThinkingLevel(input.modelSelection)
             ? ["--thinking", resolvePiThinkingLevel(input.modelSelection)!]
             : []),
@@ -71,20 +71,37 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* 
         env: environment,
         onExit: Effect.void,
       });
-      yield* transport.writeCommand({ type: "prompt", message: input.message });
+      const promptResponse = yield* transport.request(
+        { type: "prompt", message: input.message },
+        "pi-textgen-prompt",
+        RPC_REQUEST_TIMEOUT_MS,
+      );
+      if (promptResponse === undefined) {
+        return yield* new TextGenerationError({
+          operation: input.operation,
+          detail:
+            "Pi did not accept the text-generation prompt before the process exited or timed out.",
+        });
+      }
+      if (!piResponseSucceeded(promptResponse, "prompt")) {
+        const error = (promptResponse as { readonly error?: unknown }).error;
+        return yield* new TextGenerationError({
+          operation: input.operation,
+          detail: `Pi rejected text-generation prompt${typeof error === "string" ? `: ${error}` : "."}`,
+        });
+      }
       yield* Stream.fromQueue(transport.messages).pipe(
         Stream.takeUntil(
           (message) =>
             message._tag === "event" &&
-            message.event.type === "agent_end" &&
-            message.event.willRetry !== true,
+            (message.event as { readonly type: string }).type === "agent_settled",
         ),
         Stream.runDrain,
       );
       const response = yield* transport.request(
         { type: "get_last_assistant_text" },
         "pi-textgen-last-text",
-        PI_LAST_TEXT_TIMEOUT_MS,
+        RPC_REQUEST_TIMEOUT_MS,
       );
       return extractLastAssistantText(response) ?? "";
     }).pipe(
@@ -213,6 +230,7 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* 
       const { prompt, outputSchema } = buildBranchNamePrompt({
         message: input.message,
         attachments: input.attachments,
+        existingBranchNames: input.existingBranchNames,
       });
       const generated = yield* runPiJson({
         operation: "generateBranchName",

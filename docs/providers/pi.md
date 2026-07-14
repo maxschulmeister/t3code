@@ -33,11 +33,14 @@ In Settings, your Pi provider looks like this:
 ```text
 Display name: Pi
 Binary path: pi
+Auto-import sessions: on
 Require tool approval: on
 ```
 
 An empty (or `pi`) `Binary path` uses the `pi` binary from your `PATH`. Point it at an
-absolute path if you run a specific build.
+absolute path if you run a specific build. **Auto-import sessions** (on by default) pulls
+existing Pi CLI sessions into project threads when you enable Pi, on project open, and on
+server start.
 
 ## Where Pi Keeps Its Config
 
@@ -58,14 +61,23 @@ and is useful if you want work and personal Pi setups.
 
 ## Which Models Are Available?
 
-T3 Code discovers Pi models live. When it checks Pi's status, it briefly starts
-`pi --mode rpc` and asks Pi for its available models, then appends any custom models you
-configured. The result is exactly the model catalog your `~/.pi/agent` configuration
-exposes.
+T3 Code discovers Pi models and slash commands live. When it checks Pi's status, it briefly
+starts `pi --mode rpc` and asks Pi for its available models and commands, then appends any
+custom models you configured. Result matches model catalog and user commands exposed by your
+Pi configuration.
 
 If discovery fails or times out, T3 Code falls back to your custom models only. Enable more
 models with the Pi CLI (`pi config`) or by editing `~/.pi/agent/models.json`, then refresh
 provider status in Settings.
+
+## Slash Commands
+
+T3 Code loads Pi's RPC commands during provider status checks. Commands from Pi extensions,
+prompt templates, and skills appear in composer slash-command menu and run through Pi when
+selected. Built-in interactive-only commands such as `/settings` are not exposed because Pi's
+RPC mode cannot execute them.
+
+Reload provider status after adding or removing Pi commands so T3 Code refreshes menu.
 
 ## How Tool Approval Works
 
@@ -114,3 +126,31 @@ Settings form; leave it at `fail` unless you have a specific reason to change it
   confirm your keys work.
 - **Config is shared with the Pi CLI.** Changes you make in `~/.pi/agent` affect both T3
   Code and the `pi` CLI. Use `PI_CODING_AGENT_DIR` to isolate a setup.
+
+## Importing Existing Pi Sessions
+
+When Pi is enabled and **Auto-import sessions** is on (default), T3 Code scans
+`~/.pi/agent/sessions/` (or `$PI_CODING_AGENT_DIR/sessions`) and imports matching Pi
+sessions as threads:
+
+- On server start (if Pi already enabled)
+- When you enable Pi (or turn auto-import on) in Settings
+- When you add a project (or change its workspace root)
+
+Match rules:
+
+- Session `cwd` equals or is under the project workspace root, **or**
+- Session `cwd` shares the same git remote identity (worktrees elsewhere)
+
+Imported threads get message history from the session JSONL and resume via
+`--session <path>` on the next turn. Right-click a project in the sidebar and choose
+**Import Pi Sessions** to re-scan manually (works even if auto-import is off).
+Already-linked sessions are skipped.
+
+**Subagent sessions** (Pi names like `subagent: scout — …`) are **not** imported as
+threads. T3 Code does not have sub-threads yet; those land in a follow-up that mirrors
+Pi's parent/child session model. `/fork` and `/clone` sessions still import as normal
+threads.
+
+Toggle **Auto-import sessions** under the Pi provider in Settings to disable the automatic
+scans without turning Pi off.

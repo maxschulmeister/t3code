@@ -88,6 +88,23 @@ describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
 });
 
 describe("ServerSettings worktree defaults", () => {
+  it("preserves the existing worktree branch prefix for legacy configs", () => {
+    const settings = decodeServerSettings({});
+
+    expect(settings.useWorktreeBranchPrefix).toBe(true);
+    expect(settings.worktreeBranchPrefix).toBe("t3code");
+  });
+
+  it("accepts custom worktree branch prefix updates", () => {
+    const patch = decodeServerSettingsPatch({
+      useWorktreeBranchPrefix: false,
+      worktreeBranchPrefix: "  team/worktrees  ",
+    });
+
+    expect(patch.useWorktreeBranchPrefix).toBe(false);
+    expect(patch.worktreeBranchPrefix).toBe("team/worktrees");
+  });
+
   it("defaults start-from-origin off for legacy configs", () => {
     expect(decodeServerSettings({}).newWorktreesStartFromOrigin).toBe(false);
   });

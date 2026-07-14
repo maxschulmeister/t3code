@@ -8,6 +8,7 @@ import {
   extractAssistantTextDelta,
   extractAvailableModels,
   extractForkMessages,
+  extractPiSlashCommands,
   extractLastAssistantText,
   extractReasoningTextDelta,
   extractSessionFile,
@@ -164,6 +165,35 @@ describe("piModelCapabilities", () => {
     );
   });
 
+  it("loads supported thinking levels and a clamped default from model metadata", () => {
+    const capabilities = piModelCapabilities(
+      asModelInfo({
+        provider: "custom",
+        id: "reasoning-model",
+        reasoning: true,
+        thinkingLevelMap: {
+          minimal: null,
+          low: null,
+          medium: null,
+          high: "high",
+          xhigh: "xhigh",
+        },
+      }),
+    );
+    const descriptor = (capabilities.optionDescriptors ?? []).find(
+      (candidate) => candidate.id === "thinking",
+    );
+
+    expect(descriptor).toMatchObject({
+      type: "select",
+      options: [
+        { id: "off", label: "Off" },
+        { id: "high", label: "High", isDefault: true },
+        { id: "xhigh", label: "Extra High" },
+      ],
+    });
+  });
+
   it("exposes no option descriptors for non-reasoning models", () => {
     expect(piModelCapabilities(false).optionDescriptors ?? []).toEqual([]);
   });
@@ -235,6 +265,57 @@ describe("extractAvailableModels", () => {
     expect(
       extractAvailableModels(
         asResponse({ type: "response", success: true, data: { models: "nope" } }),
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("extractPiSlashCommands", () => {
+  it("maps Pi extension, prompt, and skill commands into provider slash commands", () => {
+    expect(
+      extractPiSlashCommands(
+        asResponse({
+          type: "response",
+          command: "get_commands",
+          success: true,
+          data: {
+            commands: [
+              { name: "stats", description: "Show stats", source: "extension" },
+              { name: "fix-tests", description: " Fix failing tests ", source: "prompt" },
+              { name: "skill:search", description: "Search web", source: "skill" },
+            ],
+          },
+        }),
+      ),
+    ).toEqual([
+      { name: "stats", description: "Show stats" },
+      { name: "fix-tests", description: "Fix failing tests" },
+      { name: "skill:search", description: "Search web" },
+    ]);
+  });
+
+  it("drops malformed commands and de-duplicates names case-insensitively", () => {
+    expect(
+      extractPiSlashCommands(
+        asResponse({
+          type: "response",
+          command: "get_commands",
+          success: true,
+          data: {
+            commands: [
+              { name: " Review ", source: "prompt" },
+              { name: "review", description: "duplicate", source: "extension" },
+              { name: "", source: "prompt" },
+              { name: 42, source: "prompt" },
+            ],
+          },
+        }),
+      ),
+    ).toEqual([{ name: "Review" }]);
+    expect(extractPiSlashCommands(undefined)).toEqual([]);
+    expect(
+      extractPiSlashCommands(
+        asResponse({ type: "response", command: "get_state", success: true, data: {} }),
       ),
     ).toEqual([]);
   });

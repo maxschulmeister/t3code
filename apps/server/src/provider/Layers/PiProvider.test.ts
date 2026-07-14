@@ -109,6 +109,43 @@ it.layer(NodeServices.layer)("checkPiProviderStatus", (it) => {
     }),
   );
 
+  it.effect("loads Pi extension, prompt, and skill commands into the provider snapshot", () =>
+    Effect.gen(function* () {
+      const snapshot = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const dir = yield* fs.makeTempDirectoryScoped({ prefix: "t3code-pi-commands-" });
+          const piPath = path.join(dir, "pi");
+          yield* fs.writeFileString(
+            piPath,
+            [
+              "#!/bin/sh",
+              'if [ "$1" = "--version" ]; then printf "pi 0.80.2\\n"; exit 0; fi',
+              "while IFS= read -r line; do",
+              '  case "$line" in',
+              '    *get_available_models*) printf \'{"type":"response","command":"get_available_models","id":"pi-model-discovery","success":true,"data":{"models":[{"provider":"openai","id":"gpt-5"}]}}\\n\' ;;',
+              '    *get_commands*) printf \'{"type":"response","command":"get_commands","id":"pi-command-discovery","success":true,"data":{"commands":[{"name":"review","description":"Review changes","source":"prompt"},{"name":"skill:search","description":"Search web","source":"skill"}]}}\\n\' ;;',
+              "  esac",
+              "done",
+              "",
+            ].join("\n"),
+          );
+          yield* fs.chmod(piPath, 0o755);
+          return yield* checkPiProviderStatus(
+            decodePiSettings({ enabled: true, binaryPath: piPath }),
+            dir,
+          );
+        }),
+      );
+
+      expect(snapshot.slashCommands).toEqual([
+        { name: "review", description: "Review changes" },
+        { name: "skill:search", description: "Search web" },
+      ]);
+    }),
+  );
+
   it.effect("reports ready/authenticated when models are available", () =>
     Effect.gen(function* () {
       const snapshot = yield* Effect.scoped(
