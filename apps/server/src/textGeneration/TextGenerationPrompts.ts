@@ -127,6 +127,7 @@ export function buildPrContentPrompt(input: PrContentPromptInput) {
 export interface BranchNamePromptInput {
   message: string;
   attachments?: ReadonlyArray<ChatAttachment> | undefined;
+  existingBranchNames?: ReadonlyArray<string> | undefined;
   policy?: TextGenerationPolicy | undefined;
 }
 
@@ -171,6 +172,7 @@ export function buildBranchNamePrompt(input: BranchNamePromptInput) {
     responseShape: "Return a JSON object with key: branch.",
     rules: [
       "Branch should describe the requested work from the user message.",
+      "Match existing branch naming conventions when evident.",
       "Keep it short and specific (2-6 words).",
       "Use plain words only, no issue prefixes and no punctuation-heavy text.",
       "If images are attached, use them as primary context for visual/UI issues.",
@@ -179,11 +181,19 @@ export function buildBranchNamePrompt(input: BranchNamePromptInput) {
     attachments: input.attachments,
     additionalInstructions: input.policy?.branchInstructions,
   });
+  const branchExamples = input.existingBranchNames?.slice(0, 50) ?? [];
+  const promptWithExamples =
+    branchExamples.length > 0
+      ? `${prompt}\n\nExisting local branches:\n${limitSection(
+          branchExamples.map((branch) => `- ${branch}`).join("\n"),
+          4_000,
+        )}`
+      : prompt;
   const outputSchema = Schema.Struct({
     branch: Schema.String,
   });
 
-  return { prompt, outputSchema };
+  return { prompt: promptWithExamples, outputSchema };
 }
 
 // ---------------------------------------------------------------------------

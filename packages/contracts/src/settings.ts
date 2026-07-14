@@ -410,6 +410,10 @@ export const ServerSettings = Schema.Struct({
   newWorktreesStartFromOrigin: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
+  useWorktreeBranchPrefix: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  worktreeBranchPrefix: TrimmedNonEmptyString.pipe(
+    Schema.withDecodingDefault(Effect.succeed("t3code")),
+  ),
   addProjectBaseDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   textGenerationModelSelection: ModelSelection.pipe(
     Schema.withDecodingDefault(
@@ -549,6 +553,8 @@ export const ServerSettingsPatch = Schema.Struct({
   automaticGitFetchInterval: Schema.optionalKey(Schema.DurationFromMillis),
   defaultThreadEnvMode: Schema.optionalKey(ThreadEnvMode),
   newWorktreesStartFromOrigin: Schema.optionalKey(Schema.Boolean),
+  useWorktreeBranchPrefix: Schema.optionalKey(Schema.Boolean),
+  worktreeBranchPrefix: Schema.optionalKey(TrimmedNonEmptyString),
   addProjectBaseDirectory: Schema.optionalKey(TrimmedString),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),
   observability: Schema.optionalKey(

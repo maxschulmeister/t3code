@@ -145,6 +145,9 @@ describe("ProviderCommandReactor", () => {
     readonly threadModelSelection?: ModelSelection;
     readonly sessionModelSwitch?: "unsupported" | "in-session";
     readonly requiresNewThreadForModelChange?: boolean;
+    readonly useWorktreeBranchPrefix?: boolean;
+    readonly worktreeBranchPrefix?: string;
+    readonly existingBranchNames?: ReadonlyArray<string>;
   }) {
     const now = "2026-01-01T00:00:00.000Z";
     const baseDir =
@@ -237,6 +240,20 @@ describe("ProviderCommandReactor", () => {
         if (index >= 0) {
           runtimeSessions.splice(index, 1);
         }
+      }),
+    );
+    const listRefs = vi.fn(() =>
+      Effect.succeed({
+        refs: (input?.existingBranchNames ?? []).map((name) => ({
+          name,
+          current: false,
+          isDefault: name === "main",
+          worktreePath: null,
+        })),
+        isRepo: true,
+        hasPrimaryRemote: false,
+        nextCursor: null,
+        totalCount: input?.existingBranchNames?.length ?? 0,
       }),
     );
     const renameBranch = vi.fn((input: unknown) =>
@@ -350,6 +367,7 @@ describe("ProviderCommandReactor", () => {
       Layer.provideMerge(makeProviderRegistryLayer(providerSnapshots as never)),
       Layer.provideMerge(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
+          listRefs,
           renameBranch,
         } satisfies Partial<GitWorkflowService.GitWorkflowService["Service"]>),
       ),
@@ -368,7 +386,16 @@ describe("ProviderCommandReactor", () => {
           generateThreadTitle,
         }),
       ),
-      Layer.provideMerge(ServerSettingsService.layerTest()),
+      Layer.provideMerge(
+        ServerSettingsService.layerTest({
+          ...(input?.useWorktreeBranchPrefix !== undefined
+            ? { useWorktreeBranchPrefix: input.useWorktreeBranchPrefix }
+            : {}),
+          ...(input?.worktreeBranchPrefix !== undefined
+            ? { worktreeBranchPrefix: input.worktreeBranchPrefix }
+            : {}),
+        }),
+      ),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
       Layer.provideMerge(NodeServices.layer),
     );
@@ -607,8 +634,10 @@ describe("ProviderCommandReactor", () => {
     expect(thread?.title).toBe("Reconnect spinner resume bug");
   });
 
-  it("generates a worktree branch name for the first turn", async () => {
-    const harness = await createHarness();
+  it("generates a prefixed worktree branch name using local naming conventions", async () => {
+    const harness = await createHarness({
+      existingBranchNames: ["main", "fix/socket-timeout"],
+    });
     const now = "2026-01-01T00:00:00.000Z";
 
     await Effect.runPromise(
@@ -657,8 +686,92 @@ describe("ProviderCommandReactor", () => {
     await waitFor(() => harness.refreshStatus.mock.calls.length === 1);
     expect(harness.generateBranchName.mock.calls[0]?.[0]).toMatchObject({
       message: "Add a safer reconnect backoff.",
+      existingBranchNames: ["main", "fix/socket-timeout"],
+    });
+    expect(harness.renameBranch.mock.calls[0]?.[0]).toMatchObject({
+      newBranch: "t3code/feature/gpt-5-4-mini",
     });
     expect(harness.refreshStatus.mock.calls[0]?.[0]).toBe("/tmp/provider-project-worktree");
+  });
+
+  it("omits the worktree branch prefix when disabled", async () => {
+    const harness = await createHarness({ useWorktreeBranchPrefix: false });
+    const now = "2026-01-01T00:00:00.000Z";
+
+    // oxlint-disable-next-line t3code/no-manual-effect-runtime-in-tests -- Existing reactor harness owns a ManagedRuntime and exposes engine dispatch outside Effect.
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-thread-unprefixed-branch"),
+        threadId: ThreadId.make("thread-1"),
+        branch: "t3code/1234abcd",
+        worktreePath: "/tmp/provider-project-worktree",
+      }),
+    );
+    harness.generateBranchName.mockReturnValue(Effect.succeed({ branch: "fix/socket-timeout" }));
+
+    // oxlint-disable-next-line t3code/no-manual-effect-runtime-in-tests -- Existing reactor harness owns a ManagedRuntime and exposes engine dispatch outside Effect.
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-unprefixed-branch"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-unprefixed-branch"),
+          role: "user",
+          text: "Fix reconnect handling.",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.renameBranch.mock.calls.length === 1);
+    expect(harness.renameBranch.mock.calls[0]?.[0]).toMatchObject({
+      newBranch: "fix/socket-timeout",
+    });
+  });
+
+  it("uses a custom worktree branch prefix", async () => {
+    const harness = await createHarness({ worktreeBranchPrefix: "team/worktrees" });
+    const now = "2026-01-01T00:00:00.000Z";
+
+    // oxlint-disable-next-line t3code/no-manual-effect-runtime-in-tests -- Existing reactor harness owns a ManagedRuntime and exposes engine dispatch outside Effect.
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-thread-custom-prefix"),
+        threadId: ThreadId.make("thread-1"),
+        branch: "t3code/1234abcd",
+        worktreePath: "/tmp/provider-project-worktree",
+      }),
+    );
+    harness.generateBranchName.mockReturnValue(Effect.succeed({ branch: "fix/socket-timeout" }));
+
+    // oxlint-disable-next-line t3code/no-manual-effect-runtime-in-tests -- Existing reactor harness owns a ManagedRuntime and exposes engine dispatch outside Effect.
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-custom-prefix"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-custom-prefix"),
+          role: "user",
+          text: "Fix reconnect handling.",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.renameBranch.mock.calls.length === 1);
+    expect(harness.renameBranch.mock.calls[0]?.[0]).toMatchObject({
+      newBranch: "team/worktrees/fix/socket-timeout",
+    });
   });
 
   it("forwards codex model options through session start and turn send", async () => {
@@ -1975,6 +2088,7 @@ describe("ProviderCommandReactor", () => {
       }),
     );
 
+    // oxlint-disable-next-line t3code/no-manual-effect-runtime-in-tests -- Existing reactor harness owns a ManagedRuntime and exposes engine dispatch outside Effect.
     await Effect.runPromise(
       harness.engine.dispatch({
         type: "thread.activity.append",
@@ -2008,6 +2122,7 @@ describe("ProviderCommandReactor", () => {
       }),
     );
 
+    // oxlint-disable-next-line t3code/no-manual-effect-runtime-in-tests -- Existing reactor harness owns a ManagedRuntime and exposes engine dispatch outside Effect.
     await Effect.runPromise(
       harness.engine.dispatch({
         type: "thread.user-input.respond",
@@ -2057,6 +2172,7 @@ describe("ProviderCommandReactor", () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";
 
+    // oxlint-disable-next-line t3code/no-manual-effect-runtime-in-tests -- Existing reactor harness owns a ManagedRuntime and exposes engine dispatch outside Effect.
     await Effect.runPromise(
       harness.engine.dispatch({
         type: "thread.session.set",
@@ -2076,6 +2192,7 @@ describe("ProviderCommandReactor", () => {
       }),
     );
 
+    // oxlint-disable-next-line t3code/no-manual-effect-runtime-in-tests -- Existing reactor harness owns a ManagedRuntime and exposes engine dispatch outside Effect.
     await Effect.runPromise(
       harness.engine.dispatch({
         type: "thread.session.stop",
