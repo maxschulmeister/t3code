@@ -210,6 +210,7 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
       const { prompt, outputSchema } = buildBranchNamePrompt({
         message: input.message,
         attachments: input.attachments,
+        existingBranchNames: input.existingBranchNames,
       });
 
       const generated = yield* runGrokJson({
