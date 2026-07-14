@@ -165,6 +165,35 @@ describe("piModelCapabilities", () => {
     );
   });
 
+  it("loads supported thinking levels and a clamped default from model metadata", () => {
+    const capabilities = piModelCapabilities(
+      asModelInfo({
+        provider: "custom",
+        id: "reasoning-model",
+        reasoning: true,
+        thinkingLevelMap: {
+          minimal: null,
+          low: null,
+          medium: null,
+          high: "high",
+          xhigh: "xhigh",
+        },
+      }),
+    );
+    const descriptor = (capabilities.optionDescriptors ?? []).find(
+      (candidate) => candidate.id === "thinking",
+    );
+
+    expect(descriptor).toMatchObject({
+      type: "select",
+      options: [
+        { id: "off", label: "Off" },
+        { id: "high", label: "High", isDefault: true },
+        { id: "xhigh", label: "Extra High" },
+      ],
+    });
+  });
+
   it("exposes no option descriptors for non-reasoning models", () => {
     expect(piModelCapabilities(false).optionDescriptors ?? []).toEqual([]);
   });

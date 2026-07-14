@@ -132,7 +132,7 @@ const PI_THINKING_LEVELS = [
   { value: "off", label: "Off" },
   { value: "minimal", label: "Minimal" },
   { value: "low", label: "Low" },
-  { value: "medium", label: "Medium", isDefault: true },
+  { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
   { value: "xhigh", label: "Extra High" },
 ] as const;
@@ -181,21 +181,49 @@ export function planPiModelSwitch(
   return { kind: "switch", provider: parts.provider, modelId: parts.id, slug: requestedModel };
 }
 
-export function piModelCapabilities(
-  model: boolean | Pick<ModelInfo, "provider" | "id" | "reasoning">,
-): ModelCapabilities {
+type PiModelThinkingMetadata = Pick<ModelInfo, "reasoning"> & {
+  readonly thinkingLevelMap?: Partial<Record<PiThinkingLevel, string | null>>;
+};
+
+function piSupportedThinkingLevels(model: PiModelThinkingMetadata): ReadonlyArray<PiThinkingLevel> {
+  if (!model.reasoning) return ["off"];
+  return PI_THINKING_LEVEL_VALUES.filter((level) => {
+    const mapped = model.thinkingLevelMap?.[level];
+    if (mapped === null) return false;
+    return level !== "xhigh" || mapped !== undefined;
+  });
+}
+
+function piDefaultThinkingLevel(
+  levels: ReadonlyArray<PiThinkingLevel>,
+): PiThinkingLevel | undefined {
+  const mediumIndex = PI_THINKING_LEVEL_VALUES.indexOf("medium");
+  return (
+    PI_THINKING_LEVEL_VALUES.slice(mediumIndex).find((level) => levels.includes(level)) ??
+    PI_THINKING_LEVEL_VALUES.slice(0, mediumIndex)
+      .toReversed()
+      .find((level) => levels.includes(level))
+  );
+}
+
+export function piModelCapabilities(model: boolean | PiModelThinkingMetadata): ModelCapabilities {
   const reasoning = typeof model === "boolean" ? model : Boolean(model.reasoning);
-  const supportsExtraHigh =
-    typeof model === "boolean" || (model.provider === "openai" && model.id === "codex-max");
+  const supportedLevels =
+    typeof model === "boolean" ? PI_THINKING_LEVEL_VALUES : piSupportedThinkingLevels(model);
+  const defaultLevel = piDefaultThinkingLevel(supportedLevels);
+
   return createModelCapabilities({
     optionDescriptors: reasoning
       ? [
           buildSelectOptionDescriptor({
-            id: "thinking",
+            id: PI_THINKING_OPTION_ID,
             label: "Thinking",
-            options: PI_THINKING_LEVELS.filter(
-              (level) => level.value !== "xhigh" || supportsExtraHigh,
-            ).map((level) => ({ ...level })),
+            options: PI_THINKING_LEVELS.filter((level) =>
+              supportedLevels.includes(level.value),
+            ).map((level) => ({
+              ...level,
+              ...(level.value === defaultLevel ? { isDefault: true } : {}),
+            })),
           }),
         ]
       : [],
