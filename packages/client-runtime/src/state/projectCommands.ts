@@ -102,5 +102,14 @@ export function createProjectEnvironmentAtoms<R, E>(
           JSON.stringify([environmentId, input.cwd, input.relativePath]),
       },
     }),
+    importPiSessions: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:projects:import-pi-sessions",
+      tag: WS_METHODS.projectsImportPiSessions,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.projectId, input.providerInstanceId ?? ""]),
+      },
+    }),
   };
 }

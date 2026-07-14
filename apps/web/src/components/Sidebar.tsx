@@ -1116,6 +1116,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const updateProject = useAtomCommand(projectEnvironment.update, {
     reportFailure: false,
   });
+  const importPiSessions = useAtomCommand(projectEnvironment.importPiSessions, {
+    reportFailure: false,
+  });
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
@@ -1586,6 +1589,45 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     [memberThreadCountByPhysicalKey, removeProject],
   );
 
+  const handleImportPiSessions = useCallback(
+    async (member: SidebarProjectGroupMember) => {
+      const result = await importPiSessions({
+        environmentId: member.environmentId,
+        input: { projectId: member.id },
+      });
+      if (result._tag === "Failure") {
+        if (!isAtomCommandInterrupted(result)) {
+          const error = squashAtomCommandFailure(result);
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "Pi session import failed",
+              description: error instanceof Error ? error.message : "An error occurred.",
+            }),
+          );
+        }
+        return;
+      }
+      const { imported, skipped, scanned } = result.value;
+      toastManager.add(
+        stackedThreadToast({
+          type: "success",
+          title:
+            imported > 0
+              ? `Imported ${imported} Pi session${imported === 1 ? "" : "s"}`
+              : "No new Pi sessions",
+          description:
+            imported > 0
+              ? `Scanned ${scanned}, skipped ${skipped} already linked.`
+              : scanned > 0
+                ? `Scanned ${scanned}; all already linked or empty.`
+                : "No matching Pi sessions found for this project.",
+        }),
+      );
+    },
+    [importPiSessions],
+  );
+
   const handleProjectButtonContextMenu = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
       event.preventDefault();
@@ -1596,7 +1638,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
         const actionHandlers = new Map<string, () => Promise<void> | void>();
         const makeLeaf = (
-          action: "rename" | "grouping" | "copy-path" | "delete",
+          action: "rename" | "grouping" | "copy-path" | "import-pi" | "delete",
           member: SidebarProjectGroupMember,
           options?: {
             destructive?: boolean;
@@ -1615,6 +1657,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               case "copy-path":
                 copyPathToClipboard(member.workspaceRoot, { path: member.workspaceRoot });
                 return;
+              case "import-pi":
+                return handleImportPiSessions(member);
               case "delete":
                 return handleRemoveProject(member);
             }
@@ -1629,7 +1673,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         };
 
         const buildTargetedItem = (
-          action: "rename" | "grouping" | "copy-path" | "delete",
+          action: "rename" | "grouping" | "copy-path" | "import-pi" | "delete",
           label: string,
           options?: {
             destructive?: boolean;
@@ -1666,6 +1710,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             buildTargetedItem("rename", "Rename"),
             buildTargetedItem("grouping", "Group into..."),
             buildTargetedItem("copy-path", "Copy Path"),
+            buildTargetedItem("import-pi", "Import Pi Sessions"),
             buildTargetedItem("delete", "Remove", {
               destructive: true,
             }),
@@ -1685,6 +1730,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     },
     [
       copyPathToClipboard,
+      handleImportPiSessions,
       handleRemoveProject,
       openProjectGroupingDialog,
       openProjectRenameDialog,

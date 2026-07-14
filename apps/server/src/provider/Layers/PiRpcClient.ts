@@ -7,7 +7,11 @@ import type {
   RpcExtensionUIResponse,
   RpcResponse,
 } from "@earendil-works/pi-coding-agent";
-import type { ModelSelection, ServerProviderModel } from "@t3tools/contracts";
+import type {
+  ModelSelection,
+  ServerProviderModel,
+  ServerProviderSlashCommand,
+} from "@t3tools/contracts";
 import type { ModelCapabilities } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -128,7 +132,7 @@ const PI_THINKING_LEVELS = [
   { value: "off", label: "Off" },
   { value: "minimal", label: "Minimal" },
   { value: "low", label: "Low" },
-  { value: "medium", label: "Medium", isDefault: true },
+  { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
   { value: "xhigh", label: "Extra High" },
 ] as const;
@@ -177,21 +181,49 @@ export function planPiModelSwitch(
   return { kind: "switch", provider: parts.provider, modelId: parts.id, slug: requestedModel };
 }
 
-export function piModelCapabilities(
-  model: boolean | Pick<ModelInfo, "provider" | "id" | "reasoning">,
-): ModelCapabilities {
+type PiModelThinkingMetadata = Pick<ModelInfo, "reasoning"> & {
+  readonly thinkingLevelMap?: Partial<Record<PiThinkingLevel, string | null>>;
+};
+
+function piSupportedThinkingLevels(model: PiModelThinkingMetadata): ReadonlyArray<PiThinkingLevel> {
+  if (!model.reasoning) return ["off"];
+  return PI_THINKING_LEVEL_VALUES.filter((level) => {
+    const mapped = model.thinkingLevelMap?.[level];
+    if (mapped === null) return false;
+    return level !== "xhigh" || mapped !== undefined;
+  });
+}
+
+function piDefaultThinkingLevel(
+  levels: ReadonlyArray<PiThinkingLevel>,
+): PiThinkingLevel | undefined {
+  const mediumIndex = PI_THINKING_LEVEL_VALUES.indexOf("medium");
+  return (
+    PI_THINKING_LEVEL_VALUES.slice(mediumIndex).find((level) => levels.includes(level)) ??
+    PI_THINKING_LEVEL_VALUES.slice(0, mediumIndex)
+      .toReversed()
+      .find((level) => levels.includes(level))
+  );
+}
+
+export function piModelCapabilities(model: boolean | PiModelThinkingMetadata): ModelCapabilities {
   const reasoning = typeof model === "boolean" ? model : Boolean(model.reasoning);
-  const supportsExtraHigh =
-    typeof model === "boolean" || (model.provider === "openai" && model.id === "codex-max");
+  const supportedLevels =
+    typeof model === "boolean" ? PI_THINKING_LEVEL_VALUES : piSupportedThinkingLevels(model);
+  const defaultLevel = piDefaultThinkingLevel(supportedLevels);
+
   return createModelCapabilities({
     optionDescriptors: reasoning
       ? [
           buildSelectOptionDescriptor({
-            id: "thinking",
+            id: PI_THINKING_OPTION_ID,
             label: "Thinking",
-            options: PI_THINKING_LEVELS.filter(
-              (level) => level.value !== "xhigh" || supportsExtraHigh,
-            ).map((level) => ({ ...level })),
+            options: PI_THINKING_LEVELS.filter((level) =>
+              supportedLevels.includes(level.value),
+            ).map((level) => ({
+              ...level,
+              ...(level.value === defaultLevel ? { isDefault: true } : {}),
+            })),
           }),
         ]
       : [],
@@ -233,6 +265,29 @@ export function extractAvailableModels(
     const model = entry as Record<string, unknown>;
     if (typeof model["provider"] !== "string" || typeof model["id"] !== "string") return [];
     return [model as unknown as ModelInfo];
+  });
+}
+
+export function extractPiSlashCommands(
+  response: RpcResponse | undefined,
+): ReadonlyArray<ServerProviderSlashCommand> {
+  if ((response as { command?: unknown } | undefined)?.command !== "get_commands") return [];
+  const commands = piResponseData(response)?.["commands"];
+  if (!Array.isArray(commands)) return [];
+
+  const seen = new Set<string>();
+  return commands.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const command = entry as Record<string, unknown>;
+    if (typeof command["name"] !== "string") return [];
+    const name = command["name"].trim();
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) return [];
+    seen.add(key);
+
+    const description =
+      typeof command["description"] === "string" ? command["description"].trim() : "";
+    return [{ name, ...(description ? { description } : {}) }];
   });
 }
 

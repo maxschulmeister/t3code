@@ -153,6 +153,65 @@ it.effect("fails with a TextGenerationError when Pi returns non-JSON prose", () 
   ).pipe(Effect.provide(PiTextGenerationTestLayer)),
 );
 
+it.effect("loads extensions needed by the selected Pi model", () =>
+  withFakePi(
+    {
+      PI_MOCK_REQUIRE_EXTENSIONS: "1",
+      PI_MOCK_ASSISTANT_TEXT: '{"title":"Extension model title"}',
+    },
+    (textGeneration) =>
+      Effect.gen(function* () {
+        const result = yield* textGeneration.generateThreadTitle({
+          cwd: process.cwd(),
+          message: "anything",
+          modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+        });
+        expect(result.title).toBe("Extension model title");
+      }),
+  ).pipe(Effect.provide(PiTextGenerationTestLayer)),
+);
+
+it.effect("allows slow extension startup before Pi accepts the prompt", () =>
+  withFakePi(
+    {
+      PI_MOCK_PROMPT_DELAY_MS: "7000",
+      PI_MOCK_ASSISTANT_TEXT: '{"title":"Slow extension title"}',
+    },
+    (textGeneration) =>
+      Effect.gen(function* () {
+        const result = yield* textGeneration.generateThreadTitle({
+          cwd: process.cwd(),
+          message: "anything",
+          modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+        });
+        expect(result.title).toBe("Slow extension title");
+      }),
+  ).pipe(Effect.provide(PiTextGenerationTestLayer)),
+);
+
+it.effect("fails immediately when Pi rejects the prompt", () =>
+  withFakePi({ PI_MOCK_PROMPT_FAILS: "1" }, (textGeneration) =>
+    Effect.gen(function* () {
+      const result = yield* textGeneration
+        .generateThreadTitle({
+          cwd: process.cwd(),
+          message: "anything",
+          modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+        })
+        .pipe(Effect.result, Effect.timeoutOption("1 second"));
+
+      expect(result._tag).toBe("Some");
+      if (result._tag === "Some") {
+        expect(Result.isFailure(result.value)).toBe(true);
+        if (Result.isFailure(result.value)) {
+          expect(result.value.failure).toBeInstanceOf(TextGenerationError);
+          expect(result.value.failure.message).toContain("rejected text-generation prompt");
+        }
+      }
+    }),
+  ).pipe(Effect.provide(PiTextGenerationTestLayer)),
+);
+
 it.effect("fails with a TextGenerationError when the assistant text is unavailable", () =>
   withFakePi({ PI_MOCK_LAST_TEXT_FAILS: "1" }, (textGeneration) =>
     Effect.gen(function* () {
