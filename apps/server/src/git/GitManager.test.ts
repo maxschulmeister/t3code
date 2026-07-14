@@ -93,6 +93,12 @@ interface FakeGitTextGeneration {
     message: string;
     modelSelection: ModelSelection;
   }) => Effect.Effect<{ title: string }, TextGenerationError>;
+  generateColorTheme: (input: {
+    cwd: string;
+    prompt: string;
+    preferredAppearance?: "light" | "dark" | undefined;
+    modelSelection: ModelSelection;
+  }) => Effect.Effect<TextGeneration.ColorThemeGenerationResult, TextGenerationError>;
 }
 
 type FakePullRequest = NonNullable<FakeGhScenario["pullRequest"]>;
@@ -314,6 +320,58 @@ function createTextGeneration(
       Effect.succeed({
         title: "Update workflow",
       }),
+    generateColorTheme: () =>
+      Effect.succeed({
+        theme: {
+          name: "Test Theme",
+          appearance: "dark",
+          background: "#1e1e2e",
+          foreground: "#cdd6f4",
+          card: "#181825",
+          cardForeground: "#cdd6f4",
+          popover: "#181825",
+          popoverForeground: "#cdd6f4",
+          primary: "#89b4fa",
+          primaryForeground: "#1e1e2e",
+          secondary: "#313244",
+          secondaryForeground: "#cdd6f4",
+          muted: "#313244",
+          mutedForeground: "#a6adc8",
+          accent: "#313244",
+          accentForeground: "#cdd6f4",
+          destructive: "#f38ba8",
+          destructiveForeground: "#1e1e2e",
+          border: "#45475a",
+          input: "#45475a",
+          ring: "#89b4fa",
+          info: "#89b4fa",
+          infoForeground: "#89b4fa",
+          success: "#a6e3a1",
+          successForeground: "#a6e3a1",
+          warning: "#f9e2af",
+          warningForeground: "#f9e2af",
+          cursor: "#f5e0dc",
+          selectionBackground: "#585b7066",
+          ansi: {
+            black: "#45475a",
+            red: "#f38ba8",
+            green: "#a6e3a1",
+            yellow: "#f9e2af",
+            blue: "#89b4fa",
+            magenta: "#f5c2e7",
+            cyan: "#94e2d5",
+            white: "#bac2de",
+            brightBlack: "#585b70",
+            brightRed: "#f38ba8",
+            brightGreen: "#a6e3a1",
+            brightYellow: "#f9e2af",
+            brightBlue: "#89b4fa",
+            brightMagenta: "#f5c2e7",
+            brightCyan: "#94e2d5",
+            brightWhite: "#a6adc8",
+          },
+        },
+      }),
     ...overrides,
   };
 
@@ -357,6 +415,17 @@ function createTextGeneration(
           (cause) =>
             new TextGenerationError({
               operation: "generateThreadTitle",
+              detail: "fake text generation failed",
+              ...(cause !== undefined ? { cause } : {}),
+            }),
+        ),
+      ),
+    generateColorTheme: (input) =>
+      implementation.generateColorTheme(input).pipe(
+        Effect.mapError(
+          (cause) =>
+            new TextGenerationError({
+              operation: "generateColorTheme",
               detail: "fake text generation failed",
               ...(cause !== undefined ? { cause } : {}),
             }),
