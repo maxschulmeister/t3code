@@ -517,7 +517,6 @@ export function SourceControlSettingsPanel() {
 
         {settings.useWorktreeBranchPrefix ? (
           <SettingsRow
-            className="bg-muted/20 sm:pl-9"
             title="Branch prefix"
             description="Added before generated branch names, for example t3code/fix-login."
             control={
