@@ -339,6 +339,10 @@ export function createServerEnvironmentAtoms<R, E>(
       scheduler: configScheduler,
       concurrency: configConcurrency,
     }),
+    generateColorTheme: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:generate-color-theme",
+      tag: WS_METHODS.serverGenerateColorTheme,
+    }),
     signalProcess: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:signal-process",
       tag: WS_METHODS.serverSignalProcess,

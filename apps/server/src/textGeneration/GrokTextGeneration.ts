@@ -13,6 +13,7 @@ import { TextGenerationError } from "@t3tools/contracts";
 import * as TextGeneration from "./TextGeneration.ts";
 import {
   buildBranchNamePrompt,
+  buildColorThemePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
@@ -50,7 +51,8 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateColorTheme";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -245,10 +247,31 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
+  const generateColorTheme: TextGeneration.TextGeneration["Service"]["generateColorTheme"] =
+    Effect.fn("GrokTextGeneration.generateColorTheme")(function* (input) {
+      const { prompt, outputSchema } = buildColorThemePrompt({
+        prompt: input.prompt,
+        preferredAppearance: input.preferredAppearance,
+      });
+
+      const generated = yield* runGrokJson({
+        operation: "generateColorTheme",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+
+      return {
+        theme: generated,
+      } satisfies TextGeneration.ColorThemeGenerationResult;
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateColorTheme,
   } satisfies TextGeneration.TextGeneration["Service"];
 });
