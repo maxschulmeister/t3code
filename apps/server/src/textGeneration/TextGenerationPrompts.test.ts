@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildBranchNamePrompt,
+  buildColorThemePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
@@ -133,6 +134,29 @@ describe("buildThreadTitlePrompt", () => {
     expect(result.prompt).toContain("thread.png");
     expect(result.prompt).toContain("image/png");
     expect(result.prompt).toContain("67890 bytes");
+  });
+});
+
+describe("buildColorThemePrompt", () => {
+  it("embeds the user prompt and preferred appearance hint", () => {
+    const result = buildColorThemePrompt({
+      prompt: "Catppuccin Mocha\npalette = 0=#45475a",
+      preferredAppearance: "dark",
+    });
+
+    expect(result.prompt).toContain("Catppuccin Mocha");
+    expect(result.prompt).toContain("palette = 0=#45475a");
+    expect(result.prompt).toContain('Prefer appearance="dark"');
+    expect(result.outputSchema).toBeDefined();
+  });
+
+  it("asks the model to infer appearance when no preference is set", () => {
+    const result = buildColorThemePrompt({
+      prompt: "cozy coffee shop vibes",
+    });
+
+    expect(result.prompt).toContain("Infer appearance");
+    expect(result.prompt).toContain("cozy coffee shop vibes");
   });
 });
 

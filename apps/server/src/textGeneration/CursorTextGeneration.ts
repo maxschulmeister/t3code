@@ -12,6 +12,7 @@ import { TextGenerationError } from "@t3tools/contracts";
 import * as TextGeneration from "./TextGeneration.ts";
 import {
   buildBranchNamePrompt,
+  buildColorThemePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
@@ -52,7 +53,8 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateColorTheme";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -253,10 +255,31 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
+  const generateColorTheme: TextGeneration.TextGeneration["Service"]["generateColorTheme"] =
+    Effect.fn("CursorTextGeneration.generateColorTheme")(function* (input) {
+      const { prompt, outputSchema } = buildColorThemePrompt({
+        prompt: input.prompt,
+        preferredAppearance: input.preferredAppearance,
+      });
+
+      const generated = yield* runCursorJson({
+        operation: "generateColorTheme",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+
+      return {
+        theme: generated,
+      } satisfies TextGeneration.ColorThemeGenerationResult;
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateColorTheme,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

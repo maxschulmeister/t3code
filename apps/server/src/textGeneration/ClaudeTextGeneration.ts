@@ -21,6 +21,7 @@ import { TextGenerationError } from "@t3tools/contracts";
 import * as TextGeneration from "./TextGeneration.ts";
 import {
   buildBranchNamePrompt,
+  buildColorThemePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
@@ -85,7 +86,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle",
+      | "generateThreadTitle"
+      | "generateColorTheme",
     value: unknown,
     detail: string,
   ): Effect.Effect<string, TextGenerationError> =>
@@ -115,7 +117,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateColorTheme";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -355,10 +358,31 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       };
     });
 
+  const generateColorTheme: TextGeneration.TextGeneration["Service"]["generateColorTheme"] =
+    Effect.fn("ClaudeTextGeneration.generateColorTheme")(function* (input) {
+      const { prompt, outputSchema } = buildColorThemePrompt({
+        prompt: input.prompt,
+        preferredAppearance: input.preferredAppearance,
+      });
+
+      const generated = yield* runClaudeJson({
+        operation: "generateColorTheme",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+
+      return {
+        theme: generated,
+      };
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateColorTheme,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

@@ -1,7 +1,12 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type { ChatAttachment, ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
+import type {
+  ChatAttachment,
+  GeneratedColorTheme,
+  ModelSelection,
+  ProviderInstanceId,
+} from "@t3tools/contracts";
 import { TextGenerationError } from "@t3tools/contracts";
 
 import * as ProviderInstanceRegistry from "../provider/Services/ProviderInstanceRegistry.ts";
@@ -67,6 +72,19 @@ export interface ThreadTitleGenerationResult {
   title: string;
 }
 
+export interface ColorThemeGenerationInput {
+  /** Working directory for the provider CLI (homedir is fine when no project). */
+  cwd: string;
+  /** Free-form user prompt: mood, Ghostty config, VS Code theme, prose, etc. */
+  prompt: string;
+  preferredAppearance?: "light" | "dark" | undefined;
+  modelSelection: ModelSelection;
+}
+
+export interface ColorThemeGenerationResult {
+  theme: GeneratedColorTheme;
+}
+
 export interface TextGenerationService {
   generateCommitMessage(
     input: CommitMessageGenerationInput,
@@ -74,6 +92,7 @@ export interface TextGenerationService {
   generatePrContent(input: PrContentGenerationInput): Promise<PrContentGenerationResult>;
   generateBranchName(input: BranchNameGenerationInput): Promise<BranchNameGenerationResult>;
   generateThreadTitle(input: ThreadTitleGenerationInput): Promise<ThreadTitleGenerationResult>;
+  generateColorTheme(input: ColorThemeGenerationInput): Promise<ColorThemeGenerationResult>;
 }
 
 /**
@@ -109,6 +128,14 @@ export class TextGeneration extends Context.Service<
     readonly generateThreadTitle: (
       input: ThreadTitleGenerationInput,
     ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
+
+    /**
+     * Generate a ColorTheme from an arbitrary user prompt (mood, terminal
+     * theme config, brand description, etc.) via structured output.
+     */
+    readonly generateColorTheme: (
+      input: ColorThemeGenerationInput,
+    ) => Effect.Effect<ColorThemeGenerationResult, TextGenerationError>;
   }
 >()("t3/textGeneration/TextGeneration") {}
 
@@ -119,7 +146,8 @@ type TextGenerationOp =
   | "generateCommitMessage"
   | "generatePrContent"
   | "generateBranchName"
-  | "generateThreadTitle";
+  | "generateThreadTitle"
+  | "generateColorTheme";
 
 const resolveInstance = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
@@ -158,6 +186,10 @@ export const makeTextGenerationFromRegistry = (
     generateThreadTitle: (input) =>
       resolveInstance(registry, "generateThreadTitle", input.modelSelection.instanceId).pipe(
         Effect.flatMap((textGeneration) => textGeneration.generateThreadTitle(input)),
+      ),
+    generateColorTheme: (input) =>
+      resolveInstance(registry, "generateColorTheme", input.modelSelection.instanceId).pipe(
+        Effect.flatMap((textGeneration) => textGeneration.generateColorTheme(input)),
       ),
   });
 

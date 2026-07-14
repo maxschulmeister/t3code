@@ -8,6 +8,7 @@
  */
 import * as Schema from "effect/Schema";
 import type { ChatAttachment } from "@t3tools/contracts";
+import { GeneratedColorTheme } from "@t3tools/contracts";
 
 import { limitSection } from "./TextGenerationUtils.ts";
 import type { TextGenerationPolicy } from "./TextGenerationPolicy.ts";
@@ -215,4 +216,54 @@ export function buildThreadTitlePrompt(input: ThreadTitlePromptInput) {
   });
 
   return { prompt, outputSchema };
+}
+
+// ---------------------------------------------------------------------------
+// Color theme
+// ---------------------------------------------------------------------------
+
+export interface ColorThemePromptInput {
+  prompt: string;
+  preferredAppearance?: "light" | "dark" | undefined;
+}
+
+/**
+ * Builds a prompt that turns arbitrary user input (mood, Ghostty config,
+ * VS Code theme JSON, prose) into a validated ColorThemeTokens JSON object.
+ */
+export function buildColorThemePrompt(input: ColorThemePromptInput) {
+  const appearanceHint =
+    input.preferredAppearance === undefined
+      ? "Infer appearance (light or dark) from the input; default to dark when ambiguous."
+      : `Prefer appearance="${input.preferredAppearance}" unless the input clearly implies the opposite.`;
+
+  const prompt = [
+    "You design color themes for T3 Code, a coding-agent desktop/web app.",
+    "Return a single JSON object matching the provided schema exactly.",
+    "The user input may be anything: a mood, a Ghostty/Alacritty/iTerm theme config,",
+    "VS Code / Cursor theme JSON, a brand description, or free-form prose.",
+    "Interpret it and produce a complete, cohesive theme.",
+    "",
+    "Rules:",
+    "- Use CSS colors only: prefer #RRGGBB or #RRGGBBAA. rgba()/oklch() allowed when needed for translucency.",
+    "- Fill EVERY required field. Do not omit tokens.",
+    "- `name` should be a short human-readable theme name.",
+    `- ${appearanceHint}`,
+    "- `background`/`foreground`/`card`/`popover` must have readable contrast.",
+    "- `primary` is the accent/action color; `primaryForeground` must contrast against it.",
+    "- `destructive`≈red, `info`≈blue, `success`≈green, `warning`≈amber — adapted to the palette.",
+    "- `border`/`input`/`muted`/`secondary`/`accent` should be subtle surfaces derived from bg/fg.",
+    "- `ansi` must be a full 16-color terminal palette that fits the theme.",
+    "- `cursor` and `selectionBackground` should fit the theme (selection may use alpha).",
+    "- Optionally set `fontSans`/`fontMono`/`fontSizePx` only when the input clearly requests fonts/size.",
+    "- Do not invent unrelated brand names; if input is a known theme, use that name.",
+    "",
+    "User input:",
+    limitSection(input.prompt, 28_000),
+  ].join("\n");
+
+  return {
+    prompt,
+    outputSchema: GeneratedColorTheme,
+  };
 }
