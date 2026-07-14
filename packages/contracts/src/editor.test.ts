@@ -11,11 +11,28 @@ const application = {
   path: "/Applications/Visual Studio Code.app",
   name: "Visual Studio Code",
 };
+const iconDataUrl = "data:image/png;base64,iVBORw0KGgo=";
 
 it("accepts persisted macOS application records and selection cancellation", () => {
   expect(decodeCustomApplication(application)).toEqual(application);
   expect(decodeSelection({ application })).toEqual({ application });
   expect(decodeSelection({ application: null })).toEqual({ application: null });
+});
+
+it("accepts optional PNG icons and rejects unsafe or oversized data URLs", () => {
+  expect(decodeCustomApplication({ ...application, iconDataUrl })).toEqual({
+    ...application,
+    iconDataUrl,
+  });
+  expect(() =>
+    decodeCustomApplication({ ...application, iconDataUrl: "data:image/svg+xml,<svg/>" }),
+  ).toThrow();
+  expect(() =>
+    decodeCustomApplication({
+      ...application,
+      iconDataUrl: `data:image/png;base64,${"a".repeat(512_001)}`,
+    }),
+  ).toThrow();
 });
 
 it("accepts built-in and custom launch targets", () => {

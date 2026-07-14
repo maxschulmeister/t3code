@@ -101,7 +101,7 @@ it.effect("launches the default browser through the platform command", () => {
   );
 });
 
-it.effect("selects a macOS application starting in Applications", () => {
+it.effect("selects a macOS application with its browser-renderable icon", () => {
   let spawned: ChildProcess.StandardCommand | undefined;
   return Effect.gen(function* () {
     const launcher = yield* ExternalLauncher.ExternalLauncher;
@@ -112,18 +112,23 @@ it.effect("selects a macOS application starting in Applications", () => {
         id: "/Applications/Visual Studio Code.app",
         path: "/Applications/Visual Studio Code.app",
         name: "Visual Studio Code",
+        iconDataUrl: "data:image/png;base64,iVBORw0KGgo=",
       },
     });
     assert.ok(spawned);
     assert.equal(spawned.command, "osascript");
-    assert.equal(spawned.args[0], "-e");
-    assert.match(spawned.args[1] ?? "", /path to applications folder/);
+    assert.deepEqual(spawned.args.slice(0, 3), ["-l", "JavaScript", "-e"]);
+    assert.match(spawned.args[3] ?? "", /NSWorkspace/);
     assert.equal(spawned.options.shell, false);
   }).pipe(
     Effect.provide(
       testLayer({
         platform: "darwin",
-        stdout: "/Applications/Visual Studio Code.app/\n",
+        stdout: `${JSON.stringify({
+          path: "/Applications/Visual Studio Code.app",
+          name: "Visual Studio Code",
+          iconDataUrl: "data:image/png;base64,iVBORw0KGgo=",
+        })}\n`,
         onSpawn: (command) => {
           spawned = command;
         },
@@ -131,6 +136,31 @@ it.effect("selects a macOS application starting in Applications", () => {
     ),
   );
 });
+
+it.effect("keeps selected macOS applications when icon extraction has no result", () =>
+  Effect.gen(function* () {
+    const launcher = yield* ExternalLauncher.ExternalLauncher;
+    const result = yield* launcher.selectCustomApplication();
+
+    assert.deepEqual(result, {
+      application: {
+        id: "/Applications/Plain.app",
+        path: "/Applications/Plain.app",
+        name: "Plain",
+      },
+    });
+  }).pipe(
+    Effect.provide(
+      testLayer({
+        platform: "darwin",
+        stdout: `${JSON.stringify({
+          path: "/Applications/Plain.app",
+          name: "Plain",
+        })}\n`,
+      }),
+    ),
+  ),
+);
 
 it.effect("rejects custom application operations on unsupported platforms", () =>
   Effect.gen(function* () {

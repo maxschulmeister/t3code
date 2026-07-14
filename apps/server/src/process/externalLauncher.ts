@@ -17,6 +17,8 @@ import {
   ExternalLauncherUnknownEditorError,
   ExternalLauncherUnsupportedEditorError,
   ExternalLauncherUnsupportedPlatformError,
+  CUSTOM_APPLICATION_ICON_DATA_URL_MAX_LENGTH,
+  CustomApplicationIconDataUrl,
   type CustomApplication,
   type EditorId,
   type LaunchEditorInput,
@@ -32,6 +34,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
@@ -80,12 +83,58 @@ const POWERSHELL_ARGUMENTS_PREFIX = [
   "-EncodedCommand",
 ] as const;
 
-const MACOS_APPLICATION_SELECTION_SCRIPT = `try
-  set selectedApplication to choose file with prompt "Choose an application" default location (path to applications folder) of type {"com.apple.application-bundle"}
-  return POSIX path of selectedApplication
-on error number -128
-  return ""
-end try`;
+const MACOS_APPLICATION_SELECTION_SCRIPT = `ObjC.import("AppKit");
+ObjC.import("Foundation");
+
+function run() {
+  const app = Application.currentApplication();
+  app.includeStandardAdditions = true;
+
+  let selected;
+  try {
+    selected = app.chooseFile({
+      withPrompt: "Choose an application",
+      defaultLocation: "/Applications",
+      ofType: ["com.apple.application-bundle"],
+    });
+  } catch (error) {
+    if (error.errorNumber === -128) return "null";
+    throw error;
+  }
+
+  const path = selected.toString().replace(/\\/$/, "");
+  const result = {
+    path,
+    name: path.slice(path.lastIndexOf("/") + 1).replace(/\\.app$/, ""),
+  };
+
+  try {
+    const icon = $.NSWorkspace.sharedWorkspace.iconForFile($(path));
+    icon.setSize($.NSMakeSize(64, 64));
+    const bitmap = $.NSBitmapImageRep.imageRepWithData(icon.TIFFRepresentation);
+    const png = bitmap.representationUsingTypeProperties($.NSBitmapImageFileTypePNG, $({}));
+    const base64 = png.base64EncodedStringWithOptions(0).js;
+    if (base64 && base64.length <= ${CUSTOM_APPLICATION_ICON_DATA_URL_MAX_LENGTH - "data:image/png;base64,".length}) {
+      result.iconDataUrl = "data:image/png;base64," + base64;
+    }
+  } catch (_) {
+    // Icon is optional; selection remains useful if conversion fails.
+  }
+
+  return JSON.stringify(result);
+}`;
+
+const decodeSelectedApplication = Schema.decodeUnknownSync(
+  Schema.fromJsonString(
+    Schema.NullOr(
+      Schema.Struct({
+        path: Schema.String,
+        name: Schema.String,
+        iconDataUrl: Schema.optional(CustomApplicationIconDataUrl),
+      }),
+    ),
+  ),
+);
 
 const DETACHED_IGNORE_STDIO_OPTIONS = {
   detached: true,
@@ -415,25 +464,30 @@ const selectCustomApplication = Effect.fn("externalLauncher.selectCustomApplicat
     }
 
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const command = ChildProcess.make("osascript", ["-e", MACOS_APPLICATION_SELECTION_SCRIPT], {
-      shell: false,
-    });
+    const command = ChildProcess.make(
+      "osascript",
+      ["-l", "JavaScript", "-e", MACOS_APPLICATION_SELECTION_SCRIPT],
+      { shell: false },
+    );
     const output = yield* spawner
       .string(command)
       .pipe(Effect.mapError((cause) => new ExternalLauncherApplicationSelectionError({ cause })));
-    const applicationPath = output.trim().replace(/\/$/, "");
-    if (applicationPath === "") {
-      return { application: null };
-    }
+    const selected = yield* Effect.try({
+      try: () => decodeSelectedApplication(output.trim()),
+      catch: (cause) => new ExternalLauncherApplicationSelectionError({ cause }),
+    });
+    if (selected === null) return { application: null };
+
+    const applicationPath = selected.path.trim().replace(/\/$/, "");
     if (!applicationPath.endsWith(".app")) {
       return yield* new ExternalLauncherInvalidApplicationPathError({ path: applicationPath });
     }
 
-    const fileName = applicationPath.slice(applicationPath.lastIndexOf("/") + 1);
     const application: CustomApplication = {
       id: applicationPath,
       path: applicationPath,
-      name: fileName.slice(0, -".app".length),
+      name: selected.name.trim(),
+      ...(selected.iconDataUrl ? { iconDataUrl: selected.iconDataUrl } : {}),
     };
     return { application };
   },

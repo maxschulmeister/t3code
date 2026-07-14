@@ -47,11 +47,19 @@ export type EditorId = typeof EditorId.Type;
 export const MacOsApplicationPath = TrimmedNonEmptyString.check(Schema.isEndsWith(".app"));
 export type MacOsApplicationPath = typeof MacOsApplicationPath.Type;
 
+export const CUSTOM_APPLICATION_ICON_DATA_URL_MAX_LENGTH = 512_000;
+export const CustomApplicationIconDataUrl = Schema.String.check(
+  Schema.isMaxLength(CUSTOM_APPLICATION_ICON_DATA_URL_MAX_LENGTH),
+  Schema.isPattern(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/),
+);
+export type CustomApplicationIconDataUrl = typeof CustomApplicationIconDataUrl.Type;
+
 /** Stable shape suitable for client persistence. Path doubles as id across selections. */
 export const CustomApplication = Schema.Struct({
   id: TrimmedNonEmptyString,
   path: MacOsApplicationPath,
   name: TrimmedNonEmptyString,
+  iconDataUrl: Schema.optional(CustomApplicationIconDataUrl),
 });
 export type CustomApplication = typeof CustomApplication.Type;
 
