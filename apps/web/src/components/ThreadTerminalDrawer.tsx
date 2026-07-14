@@ -133,6 +133,7 @@ function terminalThemeFromApp(mountElement?: HTMLElement | null): ITheme {
     document.body;
   const drawerStyles = getComputedStyle(drawerSurface);
   const bodyStyles = getComputedStyle(document.body);
+  const rootStyles = getComputedStyle(document.documentElement);
   const background = normalizeComputedColor(
     drawerStyles.backgroundColor,
     normalizeComputedColor(bodyStyles.backgroundColor, fallbackBackground),
@@ -141,59 +142,64 @@ function terminalThemeFromApp(mountElement?: HTMLElement | null): ITheme {
     drawerStyles.color,
     normalizeComputedColor(bodyStyles.color, fallbackForeground),
   );
+  const readCssVar = (name: string, fallback: string) =>
+    normalizeComputedColor(rootStyles.getPropertyValue(name), fallback);
 
   if (isDark) {
     return {
       background,
       foreground,
-      cursor: "rgb(180, 203, 255)",
-      selectionBackground: "rgba(180, 203, 255, 0.25)",
+      cursor: readCssVar("--terminal-cursor", "rgb(180, 203, 255)"),
+      selectionBackground: readCssVar(
+        "--terminal-selection-background",
+        "rgba(180, 203, 255, 0.25)",
+      ),
       scrollbarSliderBackground: "rgba(255, 255, 255, 0.1)",
       scrollbarSliderHoverBackground: "rgba(255, 255, 255, 0.18)",
       scrollbarSliderActiveBackground: "rgba(255, 255, 255, 0.22)",
-      black: "rgb(24, 30, 38)",
-      red: "rgb(255, 122, 142)",
-      green: "rgb(134, 231, 149)",
-      yellow: "rgb(244, 205, 114)",
-      blue: "rgb(137, 190, 255)",
-      magenta: "rgb(208, 176, 255)",
-      cyan: "rgb(124, 232, 237)",
-      white: "rgb(210, 218, 230)",
-      brightBlack: "rgb(110, 120, 136)",
-      brightRed: "rgb(255, 168, 180)",
-      brightGreen: "rgb(176, 245, 186)",
-      brightYellow: "rgb(255, 224, 149)",
-      brightBlue: "rgb(174, 210, 255)",
-      brightMagenta: "rgb(229, 203, 255)",
-      brightCyan: "rgb(167, 244, 247)",
-      brightWhite: "rgb(244, 247, 252)",
+      black: readCssVar("--ansi-black", "rgb(24, 30, 38)"),
+      red: readCssVar("--ansi-red", "rgb(255, 122, 142)"),
+      green: readCssVar("--ansi-green", "rgb(134, 231, 149)"),
+      yellow: readCssVar("--ansi-yellow", "rgb(244, 205, 114)"),
+      blue: readCssVar("--ansi-blue", "rgb(137, 190, 255)"),
+      magenta: readCssVar("--ansi-magenta", "rgb(208, 176, 255)"),
+      cyan: readCssVar("--ansi-cyan", "rgb(124, 232, 237)"),
+      white: readCssVar("--ansi-white", "rgb(210, 218, 230)"),
+      brightBlack: readCssVar("--ansi-bright-black", "rgb(110, 120, 136)"),
+      brightRed: readCssVar("--ansi-bright-red", "rgb(255, 168, 180)"),
+      brightGreen: readCssVar("--ansi-bright-green", "rgb(176, 245, 186)"),
+      brightYellow: readCssVar("--ansi-bright-yellow", "rgb(255, 224, 149)"),
+      brightBlue: readCssVar("--ansi-bright-blue", "rgb(174, 210, 255)"),
+      brightMagenta: readCssVar("--ansi-bright-magenta", "rgb(229, 203, 255)"),
+      brightCyan: readCssVar("--ansi-bright-cyan", "rgb(167, 244, 247)"),
+      brightWhite: readCssVar("--ansi-bright-white", "rgb(244, 247, 252)"),
     };
   }
 
   return {
     background,
     foreground,
-    cursor: "rgb(38, 56, 78)",
-    selectionBackground: "rgba(37, 63, 99, 0.2)",
+    cursor: readCssVar("--terminal-cursor", "rgb(38, 56, 78)"),
+    selectionBackground: readCssVar("--terminal-selection-background", "rgba(37, 63, 99, 0.2)"),
     scrollbarSliderBackground: "rgba(0, 0, 0, 0.15)",
     scrollbarSliderHoverBackground: "rgba(0, 0, 0, 0.25)",
     scrollbarSliderActiveBackground: "rgba(0, 0, 0, 0.3)",
-    black: "rgb(44, 53, 66)",
-    red: "rgb(191, 70, 87)",
-    green: "rgb(60, 126, 86)",
-    yellow: "rgb(146, 112, 35)",
-    blue: "rgb(72, 102, 163)",
-    magenta: "rgb(132, 86, 149)",
-    cyan: "rgb(53, 127, 141)",
-    white: "rgb(210, 215, 223)",
-    brightBlack: "rgb(112, 123, 140)",
-    brightRed: "rgb(212, 95, 112)",
-    brightGreen: "rgb(85, 148, 111)",
-    brightYellow: "rgb(173, 133, 45)",
-    brightBlue: "rgb(91, 124, 194)",
-    brightMagenta: "rgb(153, 107, 172)",
-    brightCyan: "rgb(70, 149, 164)",
-    brightWhite: "rgb(236, 240, 246)",
+    black: readCssVar("--ansi-black", "rgb(44, 53, 66)"),
+    red: readCssVar("--ansi-red", "rgb(191, 70, 87)"),
+    green: readCssVar("--ansi-green", "rgb(60, 126, 86)"),
+    yellow: readCssVar("--ansi-yellow", "rgb(146, 112, 35)"),
+    blue: readCssVar("--ansi-blue", "rgb(72, 102, 163)"),
+    magenta: readCssVar("--ansi-magenta", "rgb(132, 86, 149)"),
+    cyan: readCssVar("--ansi-cyan", "rgb(53, 127, 141)"),
+    white: readCssVar("--ansi-white", "rgb(210, 215, 223)"),
+    brightBlack: readCssVar("--ansi-bright-black", "rgb(112, 123, 140)"),
+    brightRed: readCssVar("--ansi-bright-red", "rgb(212, 95, 112)"),
+    brightGreen: readCssVar("--ansi-bright-green", "rgb(85, 148, 111)"),
+    brightYellow: readCssVar("--ansi-bright-yellow", "rgb(173, 133, 45)"),
+    brightBlue: readCssVar("--ansi-bright-blue", "rgb(91, 124, 194)"),
+    brightMagenta: readCssVar("--ansi-bright-magenta", "rgb(153, 107, 172)"),
+    brightCyan: readCssVar("--ansi-bright-cyan", "rgb(70, 149, 164)"),
+    brightWhite: readCssVar("--ansi-bright-white", "rgb(236, 240, 246)"),
   };
 }
 
