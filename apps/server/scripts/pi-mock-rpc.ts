@@ -2,10 +2,15 @@
 // @effect-diagnostics nodeBuiltinImport:off
 // Fake `pi --mode rpc` for tests; driven by `PI_MOCK_*` env vars.
 import * as NodeReadline from "node:readline";
+import * as NodeTimersPromises from "node:timers/promises";
 
 const assistantText = process.env["PI_MOCK_ASSISTANT_TEXT"] ?? '{"title":"Mock title"}';
 const emitInvalidJson = process.env["PI_MOCK_EMIT_INVALID_JSON"] === "1";
 const lastTextFails = process.env["PI_MOCK_LAST_TEXT_FAILS"] === "1";
+const promptFails =
+  process.env["PI_MOCK_PROMPT_FAILS"] === "1" ||
+  (process.env["PI_MOCK_REQUIRE_EXTENSIONS"] === "1" && process.argv.includes("--no-extensions"));
+const promptDelayMs = Number(process.env["PI_MOCK_PROMPT_DELAY_MS"] ?? "0");
 
 const replyText = emitInvalidJson
   ? "Sure — here is the answer, with no JSON at all."
@@ -18,7 +23,7 @@ function write(obj: unknown): void {
 
 const rl = NodeReadline.createInterface({ input: process.stdin });
 
-rl.on("line", (line: string) => {
+rl.on("line", async (line: string) => {
   const trimmed = line.trim();
   if (!trimmed) return;
   let command: { type?: string; id?: string };
@@ -32,6 +37,25 @@ rl.on("line", (line: string) => {
     case "prompt":
     case "steer":
     case "follow_up": {
+      if (promptDelayMs > 0) {
+        await NodeTimersPromises.setTimeout(promptDelayMs);
+      }
+      if (promptFails) {
+        write({
+          type: "response",
+          id: command.id,
+          command: command.type,
+          success: false,
+          error: "prompt rejected",
+        });
+        return;
+      }
+      write({
+        type: "response",
+        id: command.id,
+        command: command.type,
+        success: true,
+      });
       write({ type: "agent_start" });
       write({ type: "turn_start" });
       write({
@@ -42,6 +66,7 @@ rl.on("line", (line: string) => {
       write({ type: "message_end" });
       write({ type: "turn_end" });
       write({ type: "agent_end" });
+      write({ type: "agent_settled" });
       return;
     }
     case "get_last_assistant_text": {
