@@ -94,6 +94,7 @@
   }
   html {
     background-color: var(--app-chrome-background);
+    font-size: var(--app-font-size, 16px);
   }
   body {
     @apply text-foreground relative;

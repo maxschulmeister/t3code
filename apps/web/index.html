@@ -28,6 +28,24 @@
           const chromeColor = isDark ? DARK_BACKGROUND : LIGHT_BACKGROUND;
           document.documentElement.style.backgroundColor = chromeColor;
           themeColorMeta?.setAttribute("content", chromeColor);
+
+          // Apply persisted color-theme CSS vars early to avoid FOUC when a
+          // custom palette is selected for the current light/dark mode.
+          const rawVars = window.localStorage.getItem("t3code:color-theme-vars");
+          if (rawVars) {
+            const parsed = JSON.parse(rawVars);
+            if (parsed && typeof parsed === "object") {
+              for (const [key, value] of Object.entries(parsed)) {
+                if (typeof value === "string" && value.trim()) {
+                  document.documentElement.style.setProperty(key, value);
+                }
+              }
+              if (typeof parsed["--background"] === "string") {
+                document.documentElement.style.backgroundColor = parsed["--background"];
+                themeColorMeta?.setAttribute("content", parsed["--background"]);
+              }
+            }
+          }
         } catch {
           document.documentElement.classList.add("dark");
           document.documentElement.style.backgroundColor = DARK_BACKGROUND;
