@@ -1,155 +1,21 @@
-import { EditorId, type EnvironmentId, type ResolvedKeybindingsConfig } from "@t3tools/contracts";
+import {
+  EditorId,
+  type CustomApplication,
+  type EnvironmentId,
+  type ResolvedKeybindingsConfig,
+} from "@t3tools/contracts";
 import { memo, useCallback, useEffect, useMemo } from "react";
 import { isOpenFavoriteEditorShortcut, shortcutLabelForCommand } from "../../keybindings";
-import { usePreferredEditor } from "../../editorPreferences";
-import { ChevronDownIcon, FolderClosedIcon } from "lucide-react";
+import { useEditorPreferences } from "../../editorPreferences";
+import { ChevronDownIcon } from "lucide-react";
+import { CustomApplicationIcon } from "../CustomApplicationIcon";
 import { Button } from "../ui/button";
 import { Group, GroupSeparator } from "../ui/group";
 import { Menu, MenuItem, MenuPopup, MenuShortcut, MenuTrigger } from "../ui/menu";
-import {
-  AntigravityIcon,
-  CursorIcon,
-  Icon,
-  KiroIcon,
-  TraeIcon,
-  VisualStudioCode,
-  VisualStudioCodeInsiders,
-  VSCodium,
-  Zed,
-} from "../Icons";
-import {
-  AquaIcon,
-  CLionIcon,
-  DataGripIcon,
-  DataSpellIcon,
-  GoLandIcon,
-  IntelliJIdeaIcon,
-  PhpStormIcon,
-  PyCharmIcon,
-  RiderIcon,
-  RubyMineIcon,
-  RustRoverIcon,
-  WebStormIcon,
-} from "../JetBrainsIcons";
-import { isMacPlatform, isWindowsPlatform } from "~/lib/utils";
+import { useCustomApplications } from "~/customApplications";
+import { resolveEditorOptions } from "~/editorOptions";
 import { shellEnvironment } from "~/state/shell";
 import { useAtomCommand } from "~/state/use-atom-command";
-
-const resolveOptions = (platform: string, availableEditors: ReadonlyArray<EditorId>) => {
-  const baseOptions: ReadonlyArray<{ label: string; Icon: Icon; value: EditorId }> = [
-    {
-      label: "Cursor",
-      Icon: CursorIcon,
-      value: "cursor",
-    },
-    {
-      label: "Trae",
-      Icon: TraeIcon,
-      value: "trae",
-    },
-    {
-      label: "Kiro",
-      Icon: KiroIcon,
-      value: "kiro",
-    },
-    {
-      label: "VS Code",
-      Icon: VisualStudioCode,
-      value: "vscode",
-    },
-    {
-      label: "VS Code Insiders",
-      Icon: VisualStudioCodeInsiders,
-      value: "vscode-insiders",
-    },
-    {
-      label: "VSCodium",
-      Icon: VSCodium,
-      value: "vscodium",
-    },
-    {
-      label: "Zed",
-      Icon: Zed,
-      value: "zed",
-    },
-    {
-      label: "Antigravity",
-      Icon: AntigravityIcon,
-      value: "antigravity",
-    },
-    {
-      label: "IntelliJ IDEA",
-      Icon: IntelliJIdeaIcon,
-      value: "idea",
-    },
-    {
-      label: "Aqua",
-      Icon: AquaIcon,
-      value: "aqua",
-    },
-    {
-      label: "CLion",
-      Icon: CLionIcon,
-      value: "clion",
-    },
-    {
-      label: "DataGrip",
-      Icon: DataGripIcon,
-      value: "datagrip",
-    },
-    {
-      label: "DataSpell",
-      Icon: DataSpellIcon,
-      value: "dataspell",
-    },
-    {
-      label: "GoLand",
-      Icon: GoLandIcon,
-      value: "goland",
-    },
-    {
-      label: "PhpStorm",
-      Icon: PhpStormIcon,
-      value: "phpstorm",
-    },
-    {
-      label: "PyCharm",
-      Icon: PyCharmIcon,
-      value: "pycharm",
-    },
-    {
-      label: "Rider",
-      Icon: RiderIcon,
-      value: "rider",
-    },
-    {
-      label: "RubyMine",
-      Icon: RubyMineIcon,
-      value: "rubymine",
-    },
-    {
-      label: "RustRover",
-      Icon: RustRoverIcon,
-      value: "rustrover",
-    },
-    {
-      label: "WebStorm",
-      Icon: WebStormIcon,
-      value: "webstorm",
-    },
-    {
-      label: isMacPlatform(platform)
-        ? "Finder"
-        : isWindowsPlatform(platform)
-          ? "Explorer"
-          : "Files",
-      Icon: FolderClosedIcon,
-      value: "file-manager",
-    },
-  ];
-  const availableEditorSet = new Set(availableEditors);
-  return baseOptions.filter((option) => availableEditorSet.has(option.value));
-};
 
 export const OpenInPicker = memo(function OpenInPicker({
   environmentId,
@@ -167,29 +33,32 @@ export const OpenInPicker = memo(function OpenInPicker({
   enableShortcut?: boolean;
 }) {
   const openInEditorMutation = useAtomCommand(shellEnvironment.openInEditor, "open in editor");
-  const [preferredEditor, setPreferredEditor] = usePreferredEditor(availableEditors);
+  const { applications } = useCustomApplications(environmentId);
   const options = useMemo(
-    () => resolveOptions(navigator.platform, availableEditors),
+    () => resolveEditorOptions(navigator.platform, availableEditors),
     [availableEditors],
   );
-  const primaryOption = options.find(({ value }) => value === preferredEditor) ?? null;
+  const optionById = useMemo(
+    () => new Map(options.map((option) => [option.value, option])),
+    [options],
+  );
+  const { orderedEditors, defaultEditor } = useEditorPreferences(
+    environmentId,
+    availableEditors,
+    applications,
+  );
+  const primaryOption =
+    typeof defaultEditor === "string" ? (optionById.get(defaultEditor) ?? null) : null;
 
   const openInEditor = useCallback(
-    (editorId: EditorId | null) => {
-      if (!openInCwd) return;
-      const editor = editorId ?? preferredEditor;
-      if (!editor) return;
-      const result = openInEditorMutation({
+    (editor: EditorId | CustomApplication | null) => {
+      if (!openInCwd || !editor) return;
+      return openInEditorMutation({
         environmentId,
-        input: {
-          cwd: openInCwd,
-          editor,
-        },
+        input: { cwd: openInCwd, editor },
       });
-      setPreferredEditor(editor);
-      return result;
     },
-    [environmentId, openInCwd, openInEditorMutation, preferredEditor, setPreferredEditor],
+    [environmentId, openInCwd, openInEditorMutation],
   );
 
   const openFavoriteEditorShortcutLabel = useMemo(
@@ -199,30 +68,14 @@ export const OpenInPicker = memo(function OpenInPicker({
 
   useEffect(() => {
     if (!enableShortcut) return;
-    const handler = (e: globalThis.KeyboardEvent) => {
-      if (!isOpenFavoriteEditorShortcut(e, keybindings)) return;
-      if (!openInCwd) return;
-      if (!preferredEditor) return;
-
-      e.preventDefault();
-      void openInEditorMutation({
-        environmentId,
-        input: {
-          cwd: openInCwd,
-          editor: preferredEditor,
-        },
-      });
+    const handler = (event: globalThis.KeyboardEvent) => {
+      if (!isOpenFavoriteEditorShortcut(event, keybindings) || !openInCwd || !defaultEditor) return;
+      event.preventDefault();
+      void openInEditor(defaultEditor);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [
-    enableShortcut,
-    environmentId,
-    keybindings,
-    openInCwd,
-    openInEditorMutation,
-    preferredEditor,
-  ]);
+  }, [defaultEditor, enableShortcut, keybindings, openInCwd, openInEditor]);
 
   return (
     <Group aria-label="Open in editor">
@@ -230,10 +83,14 @@ export const OpenInPicker = memo(function OpenInPicker({
         aria-label={compact ? "Open file in preferred editor" : undefined}
         size="xs"
         variant="outline"
-        disabled={!preferredEditor || !openInCwd}
-        onClick={() => openInEditor(preferredEditor)}
+        disabled={!defaultEditor || !openInCwd}
+        onClick={() => openInEditor(defaultEditor)}
       >
-        {primaryOption?.Icon && <primaryOption.Icon aria-hidden="true" className="size-3.5" />}
+        {primaryOption ? (
+          <primaryOption.Icon aria-hidden="true" className="size-3.5" />
+        ) : defaultEditor && typeof defaultEditor !== "string" ? (
+          <CustomApplicationIcon application={defaultEditor} className="size-3.5" />
+        ) : null}
         <span
           className={
             compact
@@ -247,27 +104,42 @@ export const OpenInPicker = memo(function OpenInPicker({
       <GroupSeparator {...(!compact ? { className: "hidden @3xl/header-actions:block" } : {})} />
       <Menu>
         <MenuTrigger
-          render={
-            <Button
-              aria-label={compact ? "Choose editor" : "Copy options"}
-              size="icon-xs"
-              variant="outline"
-            />
-          }
+          render={<Button aria-label="Choose editor" size="icon-xs" variant="outline" />}
         >
           <ChevronDownIcon aria-hidden="true" className="size-4" />
         </MenuTrigger>
         <MenuPopup align="end">
-          {options.length === 0 && <MenuItem disabled>No installed editors found</MenuItem>}
-          {options.map(({ label, Icon, value }) => (
-            <MenuItem key={value} onClick={() => openInEditor(value)}>
-              <Icon aria-hidden="true" className="text-muted-foreground" />
-              {label}
-              {value === preferredEditor && openFavoriteEditorShortcutLabel && (
-                <MenuShortcut>{openFavoriteEditorShortcutLabel}</MenuShortcut>
-              )}
-            </MenuItem>
-          ))}
+          {orderedEditors.length === 0 && <MenuItem disabled>No installed editors found</MenuItem>}
+          {orderedEditors.map((editor) => {
+            if (typeof editor === "string") {
+              const option = optionById.get(editor);
+              if (!option) return null;
+              return (
+                <MenuItem key={editor} onClick={() => openInEditor(editor)}>
+                  <option.Icon aria-hidden="true" className="text-muted-foreground" />
+                  {option.label}
+                  {editor === defaultEditor && openFavoriteEditorShortcutLabel ? (
+                    <MenuShortcut>{openFavoriteEditorShortcutLabel}</MenuShortcut>
+                  ) : null}
+                </MenuItem>
+              );
+            }
+            return (
+              <MenuItem key={editor.id} onClick={() => openInEditor(editor)}>
+                <CustomApplicationIcon
+                  application={editor}
+                  className="size-4 text-muted-foreground"
+                />
+                <span className="min-w-0 flex-1 truncate">{editor.name}</span>
+                {defaultEditor !== null &&
+                typeof defaultEditor !== "string" &&
+                defaultEditor.id === editor.id &&
+                openFavoriteEditorShortcutLabel ? (
+                  <MenuShortcut>{openFavoriteEditorShortcutLabel}</MenuShortcut>
+                ) : null}
+              </MenuItem>
+            );
+          })}
         </MenuPopup>
       </Menu>
     </Group>

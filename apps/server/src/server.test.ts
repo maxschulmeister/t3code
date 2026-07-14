@@ -16,6 +16,7 @@ import {
   KeybindingRule,
   MessageId,
   ExternalLauncherCommandNotFoundError,
+  ExternalLauncherUnsupportedPlatformError,
   type OrchestrationThreadShell,
   TerminalNotRunningError,
   type OrchestrationCommand,
@@ -29,7 +30,7 @@ import {
   ThreadId,
   WS_METHODS,
   WsRpcGroup,
-  EditorId,
+  type LaunchEditorInput,
 } from "@t3tools/contracts";
 import {
   computeDpopAccessTokenHash,
@@ -4759,7 +4760,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
   it.effect("routes websocket rpc shell.openInEditor", () =>
     Effect.gen(function* () {
-      let openedInput: { cwd: string; editor: EditorId } | null = null;
+      let openedInput: LaunchEditorInput | null = null;
       yield* buildAppUnderTest({
         layers: {
           externalLauncher: {
@@ -4806,6 +4807,57 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             cwd: "/tmp/project",
             editor: "cursor",
           }),
+        ).pipe(Effect.result),
+      );
+
+      assertFailure(result, externalLauncherError);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc shell.selectCustomApplication", () =>
+    Effect.gen(function* () {
+      const selection = {
+        application: {
+          id: "/Applications/Visual Studio Code.app",
+          path: "/Applications/Visual Studio Code.app",
+          name: "Visual Studio Code",
+        },
+      };
+      yield* buildAppUnderTest({
+        layers: {
+          externalLauncher: {
+            selectCustomApplication: () => Effect.succeed(selection),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const result = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) => client[WS_METHODS.shellSelectCustomApplication]({})),
+      );
+
+      assert.deepEqual(result, selection);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc shell.selectCustomApplication errors", () =>
+    Effect.gen(function* () {
+      const externalLauncherError = new ExternalLauncherUnsupportedPlatformError({
+        operation: "select-custom-application",
+        platform: "linux",
+      });
+      yield* buildAppUnderTest({
+        layers: {
+          externalLauncher: {
+            selectCustomApplication: () => Effect.fail(externalLauncherError),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const result = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.shellSelectCustomApplication]({}),
         ).pipe(Effect.result),
       );
 

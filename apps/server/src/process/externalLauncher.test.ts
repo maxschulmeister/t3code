@@ -13,7 +13,10 @@ import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { SpawnExecutableResolution } from "@t3tools/shared/shell";
 import * as ExternalLauncher from "./externalLauncher.ts";
 
-function makeMockDetachedHandle(onUnref: () => void = () => undefined) {
+function makeMockDetachedHandle(
+  onUnref: () => void = () => undefined,
+  stdout: Stream.Stream<Uint8Array> = Stream.empty,
+) {
   return ChildProcessSpawner.makeHandle({
     pid: ChildProcessSpawner.ProcessId(1),
     exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
@@ -24,7 +27,7 @@ function makeMockDetachedHandle(onUnref: () => void = () => undefined) {
       return Effect.void;
     }),
     stdin: Sink.drain,
-    stdout: Stream.empty,
+    stdout,
     stderr: Stream.empty,
     all: Stream.empty,
     getInputFd: () => Sink.drain,
@@ -38,6 +41,7 @@ const testLayer = (input: {
   readonly resolveExecutable?: (command: string) => string | undefined;
   readonly onSpawn?: (command: ChildProcess.StandardCommand) => void;
   readonly onUnref?: () => void;
+  readonly stdout?: string;
 }) => {
   const spawnerLayer = Layer.succeed(
     ChildProcessSpawner.ChildProcessSpawner,
@@ -48,7 +52,12 @@ const testLayer = (input: {
           throw new Error("Expected a standard command");
         }
         input.onSpawn?.(command);
-        return makeMockDetachedHandle(input.onUnref);
+        return makeMockDetachedHandle(
+          input.onUnref,
+          input.stdout === undefined
+            ? Stream.empty
+            : Stream.make(new TextEncoder().encode(input.stdout)),
+        );
       }),
     ),
   );
@@ -86,6 +95,110 @@ it.effect("launches the default browser through the platform command", () => {
         },
         onUnref: () => {
           didUnref = true;
+        },
+      }),
+    ),
+  );
+});
+
+it.effect("selects a macOS application with its browser-renderable icon", () => {
+  let spawned: ChildProcess.StandardCommand | undefined;
+  return Effect.gen(function* () {
+    const launcher = yield* ExternalLauncher.ExternalLauncher;
+    const result = yield* launcher.selectCustomApplication();
+
+    assert.deepEqual(result, {
+      application: {
+        id: "/Applications/Visual Studio Code.app",
+        path: "/Applications/Visual Studio Code.app",
+        name: "Visual Studio Code",
+        iconDataUrl: "data:image/png;base64,iVBORw0KGgo=",
+      },
+    });
+    assert.ok(spawned);
+    assert.equal(spawned.command, "osascript");
+    assert.deepEqual(spawned.args.slice(0, 3), ["-l", "JavaScript", "-e"]);
+    assert.match(spawned.args[3] ?? "", /NSWorkspace/);
+    assert.equal(spawned.options.shell, false);
+  }).pipe(
+    Effect.provide(
+      testLayer({
+        platform: "darwin",
+        stdout: `${JSON.stringify({
+          path: "/Applications/Visual Studio Code.app",
+          name: "Visual Studio Code",
+          iconDataUrl: "data:image/png;base64,iVBORw0KGgo=",
+        })}\n`,
+        onSpawn: (command) => {
+          spawned = command;
+        },
+      }),
+    ),
+  );
+});
+
+it.effect("keeps selected macOS applications when icon extraction has no result", () =>
+  Effect.gen(function* () {
+    const launcher = yield* ExternalLauncher.ExternalLauncher;
+    const result = yield* launcher.selectCustomApplication();
+
+    assert.deepEqual(result, {
+      application: {
+        id: "/Applications/Plain.app",
+        path: "/Applications/Plain.app",
+        name: "Plain",
+      },
+    });
+  }).pipe(
+    Effect.provide(
+      testLayer({
+        platform: "darwin",
+        stdout: `${JSON.stringify({
+          path: "/Applications/Plain.app",
+          name: "Plain",
+        })}\n`,
+      }),
+    ),
+  ),
+);
+
+it.effect("rejects custom application operations on unsupported platforms", () =>
+  Effect.gen(function* () {
+    const launcher = yield* ExternalLauncher.ExternalLauncher;
+    const error = yield* launcher.selectCustomApplication().pipe(Effect.flip);
+    assert.instanceOf(error, ExternalLauncher.ExternalLauncherUnsupportedPlatformError);
+    assert.equal(error.platform, "linux");
+  }).pipe(Effect.provide(testLayer({ platform: "linux" }))),
+);
+
+it.effect("launches a selected macOS application with argv, not a shell", () => {
+  let spawned: ChildProcess.StandardCommand | undefined;
+  return Effect.gen(function* () {
+    const launcher = yield* ExternalLauncher.ExternalLauncher;
+    yield* launcher.launchEditor({
+      cwd: "/tmp/workspace; touch /tmp/injected",
+      editor: {
+        id: "/Applications/Custom Editor.app",
+        path: "/Applications/Custom Editor.app",
+        name: "Custom Editor",
+      },
+    });
+
+    assert.ok(spawned);
+    assert.equal(spawned.command, "open");
+    assert.deepEqual(spawned.args, [
+      "-a",
+      "/Applications/Custom Editor.app",
+      "/tmp/workspace; touch /tmp/injected",
+    ]);
+    assert.equal(spawned.options.shell, false);
+  }).pipe(
+    Effect.provide(
+      testLayer({
+        platform: "darwin",
+        resolveExecutable: () => "/usr/bin/open",
+        onSpawn: (command) => {
+          spawned = command;
         },
       }),
     ),

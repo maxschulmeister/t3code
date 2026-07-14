@@ -1,4 +1,4 @@
-import { EDITORS, EditorId, EnvironmentId } from "@t3tools/contracts";
+import { EDITORS, EditorId, EnvironmentId, type CustomApplication } from "@t3tools/contracts";
 import {
   mapAtomCommandResult,
   type AtomCommandFailure,
@@ -10,15 +10,70 @@ import { AsyncResult } from "effect/unstable/reactivity";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "./hooks/useLocalStorage";
 import { useCallback, useMemo } from "react";
 import { shellEnvironment } from "./state/shell";
+import { useCustomApplications } from "./customApplications";
 import { useAtomCommand } from "./state/use-atom-command";
 
 const LAST_EDITOR_KEY = "t3code:last-editor";
 
+export {
+  editorPreferenceRef,
+  editorPreferencesStorageKey,
+  reconcileEditorPreferences,
+  StoredEditorPreferences,
+  type EditorPreferenceRef,
+} from "./editorPreferenceModel";
+import {
+  editorPreferenceRef,
+  editorPreferencesStorageKey,
+  EMPTY_EDITOR_PREFERENCES,
+  reconcileEditorPreferences,
+  StoredEditorPreferences,
+} from "./editorPreferenceModel";
+
+export function useEditorPreferences(
+  environmentId: EnvironmentId,
+  availableEditors: readonly EditorId[],
+  customApplications: ReadonlyArray<CustomApplication>,
+) {
+  const [stored, setStored] = useLocalStorage(
+    editorPreferencesStorageKey(environmentId),
+    EMPTY_EDITOR_PREFERENCES,
+    StoredEditorPreferences,
+  );
+  const reconciled = useMemo(() => {
+    const legacyDefault = getLocalStorageItem(LAST_EDITOR_KEY, EditorId);
+    return reconcileEditorPreferences(
+      stored.defaultEditor || !legacyDefault
+        ? stored
+        : { ...stored, defaultEditor: editorPreferenceRef(legacyDefault) },
+      availableEditors,
+      customApplications,
+    );
+  }, [availableEditors, customApplications, stored]);
+
+  const setDefaultEditor = useCallback(
+    (editor: EditorId | CustomApplication | null) => {
+      const defaultEditor = editor ? editorPreferenceRef(editor) : null;
+      setStored((current) => ({ ...current, defaultEditor }));
+    },
+    [setStored],
+  );
+  const setEditorOrder = useCallback(
+    (editors: ReadonlyArray<EditorId | CustomApplication>) => {
+      setStored((current) => ({
+        ...current,
+        order: editors.map(editorPreferenceRef),
+      }));
+    },
+    [setStored],
+  );
+
+  return { ...reconciled, setDefaultEditor, setEditorOrder };
+}
+
 export class PreferredEditorEnvironmentRequiredError extends Schema.TaggedErrorClass<PreferredEditorEnvironmentRequiredError>()(
   "PreferredEditorEnvironmentRequiredError",
-  {
-    targetPath: Schema.String,
-  },
+  { targetPath: Schema.String },
 ) {
   override get message(): string {
     return `Cannot open ${this.targetPath} because no environment is selected.`;
@@ -38,35 +93,26 @@ export class PreferredEditorUnavailableError extends Schema.TaggedErrorClass<Pre
   }
 }
 
-export function usePreferredEditor(availableEditors: ReadonlyArray<EditorId>) {
-  const [lastEditor, setLastEditor] = useLocalStorage(LAST_EDITOR_KEY, null, EditorId);
-
-  const effectiveEditor = useMemo(() => {
-    if (lastEditor && availableEditors.includes(lastEditor)) return lastEditor;
-    return EDITORS.find((editor) => availableEditors.includes(editor.id))?.id ?? null;
-  }, [lastEditor, availableEditors]);
-
-  return [effectiveEditor, setLastEditor] as const;
-}
-
+/** Built-in-only compatibility seam for callers without environment custom-app data. */
 export function resolveAndPersistPreferredEditor(
   availableEditors: readonly EditorId[],
 ): EditorId | null {
   const availableEditorIds = new Set(availableEditors);
   const stored = getLocalStorageItem(LAST_EDITOR_KEY, EditorId);
   if (stored && availableEditorIds.has(stored)) return stored;
-  const editor = EDITORS.find((editor) => availableEditorIds.has(editor.id))?.id ?? null;
+  const editor = EDITORS.find((candidate) => availableEditorIds.has(candidate.id))?.id ?? null;
   if (editor) setLocalStorageItem(LAST_EDITOR_KEY, editor, EditorId);
-  return editor ?? null;
+  return editor;
 }
 
 export function useOpenInPreferredEditor(
   environmentId: EnvironmentId | null,
   availableEditors: readonly EditorId[],
 ) {
-  const openInEditor = useAtomCommand(shellEnvironment.openInEditor, {
-    reportFailure: false,
-  });
+  const openInEditor = useAtomCommand(shellEnvironment.openInEditor, { reportFailure: false });
+  const { applications: customApplications } = useCustomApplications(
+    environmentId ?? "no-environment",
+  );
   type OpenInEditorError = AtomCommandFailure<Awaited<ReturnType<typeof openInEditor>>>;
 
   return useCallback(
@@ -74,7 +120,7 @@ export function useOpenInPreferredEditor(
       targetPath: string,
     ): Promise<
       AtomCommandResult<
-        EditorId,
+        EditorId | CustomApplication,
         | OpenInEditorError
         | PreferredEditorEnvironmentRequiredError
         | PreferredEditorUnavailableError
@@ -82,14 +128,20 @@ export function useOpenInPreferredEditor(
     > => {
       if (environmentId === null) {
         return AsyncResult.failure(
-          Cause.fail(
-            new PreferredEditorEnvironmentRequiredError({
-              targetPath,
-            }),
-          ),
+          Cause.fail(new PreferredEditorEnvironmentRequiredError({ targetPath })),
         );
       }
-      const editor = resolveAndPersistPreferredEditor(availableEditors);
+      const stored =
+        getLocalStorageItem(editorPreferencesStorageKey(environmentId), StoredEditorPreferences) ??
+        EMPTY_EDITOR_PREFERENCES;
+      const legacyDefault = getLocalStorageItem(LAST_EDITOR_KEY, EditorId);
+      const editor = reconcileEditorPreferences(
+        stored.defaultEditor || !legacyDefault
+          ? stored
+          : { ...stored, defaultEditor: editorPreferenceRef(legacyDefault) },
+        availableEditors,
+        customApplications,
+      ).defaultEditor;
       if (!editor) {
         return AsyncResult.failure(
           Cause.fail(
@@ -103,13 +155,10 @@ export function useOpenInPreferredEditor(
       }
       const result = await openInEditor({
         environmentId,
-        input: {
-          cwd: targetPath,
-          editor,
-        },
+        input: { cwd: targetPath, editor },
       });
       return mapAtomCommandResult(result, () => editor);
     },
-    [availableEditors, environmentId, openInEditor],
+    [availableEditors, customApplications, environmentId, openInEditor],
   );
 }
