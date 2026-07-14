@@ -7,7 +7,11 @@ import type {
   RpcExtensionUIResponse,
   RpcResponse,
 } from "@earendil-works/pi-coding-agent";
-import type { ModelSelection, ServerProviderModel } from "@t3tools/contracts";
+import type {
+  ModelSelection,
+  ServerProviderModel,
+  ServerProviderSlashCommand,
+} from "@t3tools/contracts";
 import type { ModelCapabilities } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -233,6 +237,29 @@ export function extractAvailableModels(
     const model = entry as Record<string, unknown>;
     if (typeof model["provider"] !== "string" || typeof model["id"] !== "string") return [];
     return [model as unknown as ModelInfo];
+  });
+}
+
+export function extractPiSlashCommands(
+  response: RpcResponse | undefined,
+): ReadonlyArray<ServerProviderSlashCommand> {
+  if ((response as { command?: unknown } | undefined)?.command !== "get_commands") return [];
+  const commands = piResponseData(response)?.["commands"];
+  if (!Array.isArray(commands)) return [];
+
+  const seen = new Set<string>();
+  return commands.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const command = entry as Record<string, unknown>;
+    if (typeof command["name"] !== "string") return [];
+    const name = command["name"].trim();
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) return [];
+    seen.add(key);
+
+    const description =
+      typeof command["description"] === "string" ? command["description"].trim() : "";
+    return [{ name, ...(description ? { description } : {}) }];
   });
 }
 

@@ -61,14 +61,23 @@ and is useful if you want work and personal Pi setups.
 
 ## Which Models Are Available?
 
-T3 Code discovers Pi models live. When it checks Pi's status, it briefly starts
-`pi --mode rpc` and asks Pi for its available models, then appends any custom models you
-configured. The result is exactly the model catalog your `~/.pi/agent` configuration
-exposes.
+T3 Code discovers Pi models and slash commands live. When it checks Pi's status, it briefly
+starts `pi --mode rpc` and asks Pi for its available models and commands, then appends any
+custom models you configured. Result matches model catalog and user commands exposed by your
+Pi configuration.
 
 If discovery fails or times out, T3 Code falls back to your custom models only. Enable more
 models with the Pi CLI (`pi config`) or by editing `~/.pi/agent/models.json`, then refresh
 provider status in Settings.
+
+## Slash Commands
+
+T3 Code loads Pi's RPC commands during provider status checks. Commands from Pi extensions,
+prompt templates, and skills appear in composer slash-command menu and run through Pi when
+selected. Built-in interactive-only commands such as `/settings` are not exposed because Pi's
+RPC mode cannot execute them.
+
+Reload provider status after adding or removing Pi commands so T3 Code refreshes menu.
 
 ## How Tool Approval Works
 

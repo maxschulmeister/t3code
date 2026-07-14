@@ -2,6 +2,7 @@ import {
   type ModelCapabilities,
   type PiSettings,
   type ServerProviderModel,
+  type ServerProviderSlashCommand,
   ProviderDriverKind,
 } from "@t3tools/contracts";
 import { createModelCapabilities } from "@t3tools/shared/model";
@@ -23,6 +24,7 @@ import {
 } from "../providerSnapshot.ts";
 import {
   extractAvailableModels,
+  extractPiSlashCommands,
   makePiRpcTransport,
   piModelInfoToServerModel,
 } from "./PiRpcClient.ts";
@@ -81,6 +83,33 @@ export const discoverPiModelsViaRpc = Effect.fn("discoverPiModelsViaRpc")(
   Effect.catchCause((cause) =>
     Effect.logWarning("Pi model discovery failed", { cause }).pipe(
       Effect.as([] as ReadonlyArray<ServerProviderModel>),
+    ),
+  ),
+);
+
+/** Discover user commands via a short-lived `pi --mode rpc` session; `[]` on any failure. */
+export const discoverPiSlashCommandsViaRpc = Effect.fn("discoverPiSlashCommandsViaRpc")(
+  function* (piSettings: PiSettings, cwd: string, environment: NodeJS.ProcessEnv) {
+    const transport = yield* makePiRpcTransport({
+      binaryPath: piSettings.binaryPath || "pi",
+      args: ["--mode", "rpc", "--no-session"],
+      cwd,
+      env: environment,
+      onExit: Effect.void,
+    });
+    const response = yield* transport.request(
+      { type: "get_commands" },
+      "pi-command-discovery",
+      PI_MODEL_DISCOVERY_TIMEOUT_MS,
+    );
+    return extractPiSlashCommands(response);
+  },
+  Effect.scoped,
+  Effect.timeoutOption(PI_MODEL_DISCOVERY_TIMEOUT_MS),
+  Effect.map(Option.getOrElse(() => [] as ReadonlyArray<ServerProviderSlashCommand>)),
+  Effect.catchCause((cause) =>
+    Effect.logWarning("Pi slash command discovery failed", { cause }).pipe(
+      Effect.as([] as ReadonlyArray<ServerProviderSlashCommand>),
     ),
   ),
 );
@@ -212,17 +241,24 @@ export const checkPiProviderStatus = Effect.fn("checkPiProviderStatus")(function
     });
   }
 
-  const discovered = yield* discoverPiModelsViaRpc(piSettings, cwd, environment);
-  const models = modelsFromSettings(piSettings, discovered);
+  const [discoveredModels, slashCommands] = yield* Effect.all(
+    [
+      discoverPiModelsViaRpc(piSettings, cwd, environment),
+      discoverPiSlashCommandsViaRpc(piSettings, cwd, environment),
+    ],
+    { concurrency: "unbounded" },
+  );
+  const models = modelsFromSettings(piSettings, discoveredModels);
 
-  // no auth query in pi; get_available_models only lists once a key is configured in ~/.pi/agent
-  const authenticated = discovered.length > 0;
+  // no auth query in pi; available built-in or configured custom models imply usable setup
+  const authenticated = models.length > 0;
 
   return buildServerProvider({
     presentation: PI_PRESENTATION,
     enabled: piSettings.enabled,
     checkedAt,
     models,
+    slashCommands,
     probe: {
       installed: true,
       version: parsedVersion,
